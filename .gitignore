@@ -1,0 +1,47 @@
+# Build output
+bin/
+obj/
+TestResults/
+artifacts/
+*.user
+*.suo
+.vs/
+
+# Local runtime data
+data/
+logs/
+log/
+uploads/
+/storage/
+temp/
+tmp/
+*.log
+.superpowers/
+
+# Local configuration and secrets
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+
+# Frontend dependencies and build artifacts
+node_modules/
+dist/
+dist-ssr/
+.turbo/
+.cache/
+.vite/
+.pnpm-store/
+*.tsbuildinfo
+
+# Local frontend environment overrides
+.env.local
+.env.*.local
+
+# Nested Vben git metadata backup, if we flatten it into the root repo
+frontend/vue-vben-admin/.git-vben-backup/
+
+# IDE/editor
+.idea/
+.vscode/
+*.swp
+*.swo

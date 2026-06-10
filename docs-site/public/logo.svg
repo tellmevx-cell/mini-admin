@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MiniAdmin">
+  <rect width="64" height="64" rx="18" fill="#0f172a"/>
+  <path d="M17 44V20h7l8 13 8-13h7v24h-7V31l-6 9h-4l-6-9v13z" fill="#5eead4"/>
+  <path d="M14 14h36v4H14z" fill="#38bdf8" opacity=".8"/>
+</svg>

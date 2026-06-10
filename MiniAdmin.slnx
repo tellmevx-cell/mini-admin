@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MiniAdmin.Api/MiniAdmin.Api.csproj" />
+    <Project Path="src/MiniAdmin.Application.Contracts/MiniAdmin.Application.Contracts.csproj" />
+    <Project Path="src/MiniAdmin.Application/MiniAdmin.Application.csproj" />
+    <Project Path="src/MiniAdmin.Domain.Shared/MiniAdmin.Domain.Shared.csproj" />
+    <Project Path="src/MiniAdmin.Domain/MiniAdmin.Domain.csproj" />
+    <Project Path="src/MiniAdmin.Infrastructure/MiniAdmin.Infrastructure.csproj" />
+    <Project Path="src/MiniAdmin.Shared/MiniAdmin.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MiniAdmin.Tests/MiniAdmin.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,211 @@
+/* MiniAdmin enterprise UI consistency layer. */
+
+:root,
+#app {
+  --mini-admin-panel-radius: 8px;
+  --mini-admin-panel-gap: 12px;
+  --mini-admin-panel-padding: 14px;
+  --mini-admin-subtle-bg: hsl(var(--muted) / 28%);
+}
+
+#app :where(
+  .table-shell,
+  .user-panel,
+  .department-panel,
+  .config-band,
+  .panel,
+  .info-panel,
+  .summary-panel,
+  .runtime-sidebar,
+  .runtime-main,
+  .runtime-context,
+  .service-panel,
+  .log-console,
+  .detail-overview,
+  .detail-section
+) {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--mini-admin-panel-radius);
+  background: hsl(var(--background));
+}
+
+#app :where(
+  .table-shell,
+  .user-panel,
+  .department-panel,
+  .config-band,
+  .panel,
+  .info-panel,
+  .runtime-sidebar,
+  .runtime-main,
+  .runtime-context,
+  .service-panel,
+  .log-console
+) {
+  min-width: 0;
+}
+
+#app :where(
+  .page-workspace,
+  .user-workspace,
+  .code-generator-workspace,
+  .monitor-workspace,
+  .runtime-page
+) {
+  gap: var(--mini-admin-panel-gap);
+}
+
+#app :where(.table-shell, .user-panel, .department-panel, .panel, .info-panel) {
+  overflow: hidden;
+}
+
+#app :where(.table-toolbar, .toolbar, .panel-header, .panel-heading, .panel-title) {
+  min-width: 0;
+}
+
+#app :where(.table-toolbar, .toolbar, .panel-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mini-admin-panel-gap);
+}
+
+#app :where(.table-toolbar h3, .toolbar h3, .panel-header h3, .panel-heading h3, .panel-title h3) {
+  margin: 0;
+  color: hsl(var(--foreground));
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+#app :where(.table-toolbar span, .toolbar-title span, .panel-hint, .panel-heading span, .panel-title span) {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#app :where(.toolbar-title, .table-toolbar > div:first-child, .panel-header > div:first-child) {
+  min-width: 0;
+}
+
+#app :where(.toolbar-title h3, .table-toolbar h3, .panel-header h3) + span {
+  display: block;
+  margin-top: 3px;
+}
+
+#app .ant-table-wrapper {
+  min-width: 0;
+}
+
+#app .ant-table {
+  color: hsl(var(--foreground));
+  font-size: 13px;
+}
+
+#app .ant-table-thead > tr > th {
+  background: var(--mini-admin-subtle-bg) !important;
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#app .ant-table-tbody > tr > td {
+  color: hsl(var(--foreground));
+  vertical-align: top;
+}
+
+#app .ant-table-tbody > tr:hover > td {
+  background: hsl(var(--primary) / 5%) !important;
+}
+
+#app .ant-table-cell {
+  overflow-wrap: anywhere;
+}
+
+#app .ant-table-pagination.ant-pagination {
+  margin: 12px 0 0;
+}
+
+#app .ant-table-wrapper .ant-btn-link {
+  padding-inline: 2px;
+}
+
+body .ant-modal .ant-modal-content,
+body .ant-drawer .ant-drawer-content {
+  border-radius: var(--mini-admin-panel-radius);
+}
+
+body .ant-modal .ant-modal-title,
+body .ant-drawer .ant-drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+body .ant-modal .ant-form-item-label > label,
+body .ant-drawer .ant-form-item-label > label {
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  font-weight: 500;
+}
+
+body .ant-modal .ant-input,
+body .ant-modal .ant-input-number,
+body .ant-modal .ant-select-selector,
+body .ant-drawer .ant-input,
+body .ant-drawer .ant-input-number,
+body .ant-drawer .ant-select-selector {
+  border-radius: 6px;
+}
+
+#app :where(.table-action, .ant-btn) {
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease;
+}
+
+#app :where(.table-action) {
+  border-radius: 4px;
+}
+
+#app :where(.ant-tag) {
+  max-width: 100%;
+  line-height: 20px;
+}
+
+#app :where(.ant-empty) {
+  padding-block: 22px;
+}
+
+@media (max-width: 900px) {
+  #app :where(.table-toolbar, .toolbar, .panel-header, .panel-heading, .panel-title) {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  #app :where(.table-toolbar .ant-space, .toolbar .ant-space, .panel-header .ant-space) {
+    width: 100%;
+  }
+
+  #app :where(.table-toolbar .ant-space-item, .toolbar .ant-space-item, .panel-header .ant-space-item) {
+    max-width: 100%;
+  }
+
+  #app :where(.table-toolbar .ant-input, .toolbar .ant-input, .panel-header .ant-input) {
+    min-width: min(100%, 220px);
+  }
+}
+
+@media (max-width: 700px) {
+  #app :where(.table-shell, .user-panel, .department-panel, .panel, .info-panel) {
+    padding: 12px;
+  }
+
+  body .ant-modal {
+    max-width: calc(100vw - 24px);
+  }
+
+  #app .ant-table {
+    font-size: 12px;
+  }
+}

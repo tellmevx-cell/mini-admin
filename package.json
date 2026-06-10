@@ -1,0 +1,10 @@
+{
+  "name": "mini-admin-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "docs:dev": "pnpm --dir docs-site dev",
+    "docs:build": "pnpm --dir docs-site build",
+    "docs:preview": "pnpm --dir docs-site preview"
+  }
+}

@@ -1,0 +1,205 @@
+:root {
+  --vp-c-brand-1: #0f766e;
+  --vp-c-brand-2: #0d9488;
+  --vp-c-brand-3: #14b8a6;
+  --vp-c-brand-soft: rgba(20, 184, 166, 0.16);
+  --vp-font-family-base: "Segoe UI", "Microsoft YaHei", sans-serif;
+  --vp-font-family-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --mini-ink: #0f172a;
+  --mini-muted: #64748b;
+  --mini-line: rgba(15, 23, 42, 0.1);
+  --mini-surface: rgba(255, 255, 255, 0.82);
+}
+
+.dark {
+  --vp-c-bg: #08111f;
+  --vp-c-bg-alt: #0d1726;
+  --vp-c-bg-soft: #101d30;
+  --mini-ink: #e2e8f0;
+  --mini-muted: #94a3b8;
+  --mini-line: rgba(148, 163, 184, 0.16);
+  --mini-surface: rgba(15, 23, 42, 0.72);
+}
+
+.VPHome {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(20, 184, 166, 0.2), transparent 30rem),
+    radial-gradient(circle at 80% 20%, rgba(56, 189, 248, 0.18), transparent 28rem),
+    linear-gradient(180deg, rgba(248, 250, 252, 0), rgba(15, 23, 42, 0.04));
+}
+
+.dark .VPHome {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(20, 184, 166, 0.16), transparent 30rem),
+    radial-gradient(circle at 80% 20%, rgba(56, 189, 248, 0.12), transparent 28rem),
+    linear-gradient(180deg, rgba(8, 17, 31, 0), rgba(20, 184, 166, 0.05));
+}
+
+.VPHomeHero {
+  position: relative;
+  overflow: hidden;
+}
+
+.VPHomeHero::before {
+  content: "";
+  position: absolute;
+  inset: 34px 24px auto auto;
+  width: min(44vw, 620px);
+  height: min(44vw, 620px);
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(15, 118, 110, 0.28) 1px, transparent 1px),
+    linear-gradient(rgba(15, 118, 110, 0.24) 1px, transparent 1px);
+  background-size: 34px 34px;
+  border-radius: 42px;
+  mask-image: radial-gradient(circle at 50% 50%, black, transparent 70%);
+  opacity: 0.72;
+  transform: rotate(-5deg);
+}
+
+.VPHomeHero .name {
+  letter-spacing: -0.06em;
+}
+
+.VPHomeHero .text {
+  max-width: 760px;
+  letter-spacing: -0.045em;
+}
+
+.VPHomeHero .tagline {
+  max-width: 700px;
+  color: var(--mini-muted);
+}
+
+.mini-home {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px 88px;
+}
+
+.mini-home-section {
+  margin-top: 72px;
+}
+
+.mini-section-kicker {
+  margin-bottom: 14px;
+  color: var(--vp-c-brand-1);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.mini-section-title {
+  max-width: 780px;
+  margin: 0;
+  color: var(--mini-ink);
+  font-size: clamp(30px, 5vw, 56px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.mini-section-copy {
+  max-width: 720px;
+  margin-top: 18px;
+  color: var(--mini-muted);
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+.mini-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 34px;
+  overflow: hidden;
+  border: 1px solid var(--mini-line);
+  border-radius: 28px;
+  background: var(--mini-line);
+}
+
+.mini-feature {
+  min-height: 210px;
+  padding: 28px;
+  background: var(--mini-surface);
+  backdrop-filter: blur(18px);
+}
+
+.mini-feature strong {
+  display: block;
+  color: var(--mini-ink);
+  font-size: 18px;
+}
+
+.mini-feature span {
+  display: block;
+  margin-top: 12px;
+  color: var(--mini-muted);
+  line-height: 1.75;
+}
+
+.mini-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 34px;
+}
+
+.mini-flow-step {
+  padding: 22px;
+  border: 1px solid var(--mini-line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.1), transparent);
+}
+
+.mini-flow-step b {
+  color: var(--vp-c-brand-1);
+}
+
+.mini-flow-step p {
+  margin: 10px 0 0;
+  color: var(--mini-muted);
+  line-height: 1.65;
+}
+
+.mini-callout {
+  margin-top: 40px;
+  padding: 30px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 30px;
+  background:
+    linear-gradient(135deg, rgba(20, 184, 166, 0.16), rgba(56, 189, 248, 0.08)),
+    var(--mini-surface);
+}
+
+.mini-callout h2 {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  color: var(--mini-ink);
+  letter-spacing: -0.03em;
+}
+
+.mini-callout p {
+  max-width: 820px;
+  color: var(--mini-muted);
+  line-height: 1.75;
+}
+
+.mini-doc-table table {
+  display: table;
+  width: 100%;
+}
+
+@media (max-width: 860px) {
+  .mini-feature-grid,
+  .mini-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .VPHomeHero::before {
+    inset: auto -80px 80px auto;
+    width: 360px;
+    height: 360px;
+  }
+}
