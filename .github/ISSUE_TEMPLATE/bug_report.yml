@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a reproducible MiniAdmin problem.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve MiniAdmin. Please include enough detail for maintainers to reproduce the issue quickly.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem summary
+      description: What went wrong?
+      placeholder: Describe the user-visible problem.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Backend API
+        - Frontend UI
+        - Workflow
+        - Message center
+        - Tenant / SaaS
+        - Code generator
+        - File storage
+        - Documentation
+        - Deployment / Docker
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: List exact actions, API calls, or commands.
+      placeholder: |
+        1. Start backend with ...
+        2. Login as ...
+        3. Open ...
+        4. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, .NET SDK, Node.js, pnpm, browser, database, and deployment mode.
+      placeholder: |
+        OS:
+        .NET SDK:
+        Node.js:
+        pnpm:
+        Database:
+        Browser:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant logs only. Remove secrets before submitting.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submit checks
+      options:
+        - label: I removed passwords, tokens, connection strings, and private host names from this issue.
+          required: true
+        - label: I searched existing issues and did not find a duplicate.
+          required: true

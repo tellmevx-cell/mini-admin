@@ -35,6 +35,8 @@ Invoke-WebRequest -Uri http://localhost:5021/health -UseBasicParsing
 
 默认配置会初始化基础菜单、权限、管理员、系统数据、工作流示例和通知策略。快速体验时建议先使用默认 InMemory 模式，减少数据库配置干扰。
 
+如果你想同时体验 MySQL、Redis、API 和前端容器，可以直接走 [Docker Compose 指南](./docker-compose.md)。
+
 ## 启动前端
 
 ```powershell
@@ -53,6 +55,14 @@ http://localhost:5666
 
 ```text
 admin / 123456
+```
+
+演示租户账号：
+
+```text
+tenant: demo
+user: demo
+password: 123456
 ```
 
 ## 启动文档站
@@ -122,3 +132,13 @@ pnpm -v
 ```text
 http://localhost:5021
 ```
+
+### Docker 方式启动失败
+
+先校验 Compose 配置：
+
+```powershell
+docker compose config
+```
+
+如果提示缺少环境变量，确认已经从 `.env.example` 复制出 `.env`，并替换了其中的密码和 `MINIADMIN_JWT_SIGNING_KEY`。完整排查步骤见 [Docker Compose 指南](./docker-compose.md)。

@@ -58,6 +58,18 @@ docs-site/.vitepress/dist
 
 可以部署到任意静态站点服务，例如 Nginx、OSS 静态网站、Git Pages 或内部文档平台。
 
+## Docker Compose 部署
+
+仓库提供了 `docker-compose.yml`、`Dockerfile.api`、前端 Nginx 镜像配置和 `.env.example`。它适合本机体验、内网演示和小规模部署基线：
+
+```powershell
+Copy-Item .env.example .env
+docker compose config
+docker compose up -d --build
+```
+
+上线前必须修改 `.env` 中的 JWT、MySQL、Redis 密码，并把 `.env` 保留在服务器本地，不要提交到仓库。完整说明见 [Docker Compose 指南](./docker-compose.md)。
+
 ## 数据库准备
 
 生产环境建议使用 MySQL。

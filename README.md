@@ -3,6 +3,7 @@
 MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 SaaS 多租户、RBAC 权限、工作流审批、消息中心、审计日志、代码生成器、系统监控和文档站整合在同一个开箱即用的工程里，适合作为中后台、内部运营平台、低代码业务平台或多租户管理系统的基础模板。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/tellmevx-cell/mini-admin/actions/workflows/ci.yml/badge.svg)](https://github.com/tellmevx-cell/mini-admin/actions/workflows/ci.yml)
 [![Backend](https://img.shields.io/badge/.NET-10-blue.svg)](src/MiniAdmin.Api)
 [![Frontend](https://img.shields.io/badge/Vue-Vben%20Admin-42b883.svg)](frontend/vue-vben-admin)
 [![Docs](https://img.shields.io/badge/Docs-VitePress-646cff.svg)](docs-site)
@@ -110,6 +111,25 @@ http://localhost:5666
 
 > 首次公开部署前请务必修改默认密码和 `Jwt:SigningKey`。
 
+### Docker Compose 一键体验
+
+如果你希望同时启动 MySQL、Redis、后端 API 和前端静态站点，可以使用 Docker Compose：
+
+```powershell
+Copy-Item .env.example .env
+# 编辑 .env，替换 JWT、MySQL、Redis 相关密码
+docker compose up -d --build
+```
+
+访问：
+
+```text
+前端：http://localhost:5666
+后端：http://localhost:8080/health
+```
+
+完整说明见 [Docker Compose 指南](docs-site/guide/docker-compose.md)。
+
 ## 使用 MySQL / Redis
 
 仓库默认配置不包含任何真实密钥。开发环境推荐通过环境变量或本地忽略文件配置连接信息。
@@ -190,7 +210,9 @@ pnpm -F @vben/web-antd run typecheck
 
 ## 贡献
 
-欢迎提交 Issue、Pull Request、功能建议和二开实践反馈。建议贡献前先运行相关测试，并在 PR 中说明：
+欢迎提交 Issue、Pull Request、功能建议和二开实践反馈。开始前建议阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [SECURITY.md](SECURITY.md)。
+
+建议贡献前先运行相关测试，并在 PR 中说明：
 
 - 改动目的和影响范围。
 - 是否包含数据库结构、权限码或菜单种子变更。

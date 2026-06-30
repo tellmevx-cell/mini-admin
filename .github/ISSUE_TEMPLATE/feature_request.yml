@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a focused MiniAdmin improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Use case
+      description: What problem does this solve?
+      placeholder: Describe the workflow, user, and pain point.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Keep the scope small and practical.
+      placeholder: Describe the smallest useful version of this feature.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Backend API
+        - Frontend UI
+        - Workflow
+        - Message center
+        - Tenant / SaaS
+        - Code generator
+        - Documentation
+        - Deployment / Docker
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      placeholder: What other approaches did you consider?
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request is focused enough to be implemented and tested independently.
+          required: true
+        - label: I am willing to help validate the behavior after it is implemented.
+          required: false

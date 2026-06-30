@@ -1,0 +1,89 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: mini-admin-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MINIADMIN_MYSQL_DATABASE:-mini_admin}
+      MYSQL_USER: ${MINIADMIN_MYSQL_USER:-miniadmin}
+      MYSQL_PASSWORD: ${MINIADMIN_MYSQL_PASSWORD:?Set MINIADMIN_MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MINIADMIN_MYSQL_ROOT_PASSWORD:?Set MINIADMIN_MYSQL_ROOT_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: mini-admin-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${MINIADMIN_REDIS_PASSWORD:?Set MINIADMIN_REDIS_PASSWORD in .env}
+    command: ["sh", "-c", "redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: mini-admin-api:local
+    container_name: mini-admin-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__SigningKey: ${MINIADMIN_JWT_SIGNING_KEY:?Set MINIADMIN_JWT_SIGNING_KEY in .env}
+      Database__Provider: MySql
+      Database__InitializeOnStartup: "true"
+      Database__SchemaManagement: Auto
+      ConnectionStrings__MiniAdmin: Server=mysql;Port=3306;Database=${MINIADMIN_MYSQL_DATABASE:-mini_admin};User=${MINIADMIN_MYSQL_USER:-miniadmin};Password=${MINIADMIN_MYSQL_PASSWORD};CharSet=utf8mb4;SslMode=None;AllowPublicKeyRetrieval=True;
+      Cache__Provider: Redis
+      Cache__Redis__Configuration: redis:6379,password=${MINIADMIN_REDIS_PASSWORD},abortConnect=False,defaultDatabase=0
+      FileStorage__Provider: Local
+      FileStorage__Local__RootPath: /app/storage/uploads
+    ports:
+      - "${MINIADMIN_HTTP_PORT:-8080}:8080"
+    volumes:
+      - uploads:/app/storage/uploads
+
+  web:
+    build:
+      context: frontend/vue-vben-admin
+      dockerfile: apps/web-antd/Dockerfile
+      args:
+        VITE_GLOB_API_URL: /api
+    image: mini-admin-web:local
+    container_name: mini-admin-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${MINIADMIN_WEB_PORT:-5666}:80"
+
+volumes:
+  mysql_data:
+    name: ${MINIADMIN_MYSQL_VOLUME:-miniadmin_mysql}
+  redis_data:
+    name: ${MINIADMIN_REDIS_VOLUME:-miniadmin_redis}
+  uploads:
+    name: ${MINIADMIN_UPLOADS_VOLUME:-miniadmin_uploads}

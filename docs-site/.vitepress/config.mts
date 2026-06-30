@@ -33,6 +33,7 @@ export default defineConfig({
           items: [
             { text: '项目介绍', link: '/guide/introduction' },
             { text: '快速开始', link: '/guide/quick-start' },
+            { text: 'Docker Compose', link: '/guide/docker-compose' },
             { text: '本地开发', link: '/guide/local-development' },
             { text: '部署上线', link: '/guide/deployment' },
           ],

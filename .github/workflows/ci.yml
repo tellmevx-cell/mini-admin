@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore MiniAdmin.slnx
+
+      - name: Build
+        run: dotnet build MiniAdmin.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/MiniAdmin.Tests/MiniAdmin.Tests.csproj --configuration Release --no-build --logger trx --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: docs-site/pnpm-lock.yaml
+
+      - name: Install docs dependencies
+        run: pnpm --dir docs-site install --frozen-lockfile
+
+      - name: Build docs
+        run: pnpm --dir docs-site build
+
+  frontend:
+    name: Frontend typecheck and build
+    runs-on: ubuntu-latest
+    env:
+      VITE_GLOB_API_URL: /api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/vue-vben-admin/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: frontend/vue-vben-admin
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck web app
+        working-directory: frontend/vue-vben-admin
+        run: pnpm -F @vben/web-antd run typecheck
+
+      - name: Build web app
+        working-directory: frontend/vue-vben-admin
+        run: pnpm -F @vben/web-antd run build

@@ -19,6 +19,8 @@ tmp/
 .superpowers/
 
 # Local configuration and secrets
+/.env
+!/.env.example
 **/appsettings.Development.json
 **/appsettings.Local.json
 **/appsettings.*.local.json
@@ -30,6 +32,8 @@ dist-ssr/
 .turbo/
 .cache/
 .vite/
+docs-site/.vitepress/cache/
+docs-site/.vitepress/dist/
 .pnpm-store/
 *.tsbuildinfo
 

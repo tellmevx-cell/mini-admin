@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS restore
+WORKDIR /src
+
+COPY MiniAdmin.slnx ./
+COPY src/MiniAdmin.Api/MiniAdmin.Api.csproj src/MiniAdmin.Api/
+COPY src/MiniAdmin.Application/MiniAdmin.Application.csproj src/MiniAdmin.Application/
+COPY src/MiniAdmin.Application.Contracts/MiniAdmin.Application.Contracts.csproj src/MiniAdmin.Application.Contracts/
+COPY src/MiniAdmin.Domain/MiniAdmin.Domain.csproj src/MiniAdmin.Domain/
+COPY src/MiniAdmin.Domain.Shared/MiniAdmin.Domain.Shared.csproj src/MiniAdmin.Domain.Shared/
+COPY src/MiniAdmin.Infrastructure/MiniAdmin.Infrastructure.csproj src/MiniAdmin.Infrastructure/
+COPY src/MiniAdmin.Shared/MiniAdmin.Shared.csproj src/MiniAdmin.Shared/
+RUN dotnet restore src/MiniAdmin.Api/MiniAdmin.Api.csproj
+
+FROM restore AS publish
+COPY . .
+RUN dotnet publish src/MiniAdmin.Api/MiniAdmin.Api.csproj --configuration Release --output /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ASPNETCORE_URLS=http://+:8080
+EXPOSE 8080
+
+COPY --from=publish /app/publish .
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl --fail http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["dotnet", "MiniAdmin.Api.dll"]
