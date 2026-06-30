@@ -71,6 +71,10 @@ services:
       dockerfile: apps/web-antd/Dockerfile
       args:
         VITE_GLOB_API_URL: /api
+        NPM_REGISTRY: ${MINIADMIN_NPM_REGISTRY:-https://registry.npmmirror.com}
+        PNPM_FETCH_TIMEOUT: ${MINIADMIN_PNPM_FETCH_TIMEOUT:-600000}
+        PNPM_FETCH_RETRIES: ${MINIADMIN_PNPM_FETCH_RETRIES:-5}
+        PNPM_NETWORK_CONCURRENCY: ${MINIADMIN_PNPM_NETWORK_CONCURRENCY:-4}
     image: mini-admin-web:local
     container_name: mini-admin-web
     restart: unless-stopped

@@ -76,6 +76,9 @@ bash scripts/deploy-mini-admin.sh --logs
 
 # 修改前端访问端口
 MINIADMIN_WEB_PORT=8088 bash scripts/deploy-mini-admin.sh
+
+# 国内服务器前端依赖下载慢时，进一步降低并发并拉长超时
+MINIADMIN_PNPM_NETWORK_CONCURRENCY=2 MINIADMIN_PNPM_FETCH_TIMEOUT=900000 bash scripts/deploy-mini-admin.sh
 ```
 
 1Panel 绑定域名时，可以创建反向代理网站，代理地址填写：
@@ -211,6 +214,22 @@ docker compose up -d --build
 ### 前端构建较慢
 
 前端基于 Vben workspace，第一次 `pnpm install` 和构建会比较慢。后续 Docker 层缓存命中后会快很多。
+
+如果国内服务器在 `pnpm install --frozen-lockfile` 阶段下载 `@iconify/json`、`echarts` 等大包超时，可以在 `.env` 中调整：
+
+```text
+MINIADMIN_NPM_REGISTRY=https://registry.npmmirror.com
+MINIADMIN_PNPM_FETCH_TIMEOUT=900000
+MINIADMIN_PNPM_FETCH_RETRIES=8
+MINIADMIN_PNPM_NETWORK_CONCURRENCY=2
+```
+
+然后重新构建：
+
+```bash
+docker compose build --no-cache web
+docker compose up -d
+```
 
 ## 生产提醒
 

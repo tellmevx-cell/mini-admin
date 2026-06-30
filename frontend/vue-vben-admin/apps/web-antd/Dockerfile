@@ -3,7 +3,20 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@11.2.2 --activate
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG PNPM_FETCH_TIMEOUT=600000
+ARG PNPM_FETCH_RETRIES=5
+ARG PNPM_NETWORK_CONCURRENCY=4
+
+RUN corepack enable && corepack prepare pnpm@11.2.2 --activate \
+    && pnpm config set registry "${NPM_REGISTRY}" \
+    && pnpm config set fetch-timeout "${PNPM_FETCH_TIMEOUT}" \
+    && pnpm config set fetch-retries "${PNPM_FETCH_RETRIES}" \
+    && pnpm config set fetch-retry-mintimeout 20000 \
+    && pnpm config set fetch-retry-maxtimeout 120000 \
+    && pnpm config set network-concurrency "${PNPM_NETWORK_CONCURRENCY}"
 
 ARG VITE_GLOB_API_URL=/api
 ENV VITE_GLOB_API_URL=${VITE_GLOB_API_URL}
