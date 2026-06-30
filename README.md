@@ -115,6 +115,14 @@ http://localhost:5666
 
 如果你希望同时启动 MySQL、Redis、后端 API 和前端静态站点，可以使用 Docker Compose：
 
+Linux / 1Panel 服务器推荐直接执行：
+
+```bash
+bash scripts/deploy-mini-admin.sh
+```
+
+本地手动体验也可以执行：
+
 ```powershell
 Copy-Item .env.example .env
 # 编辑 .env，替换 JWT、MySQL、Redis 相关密码

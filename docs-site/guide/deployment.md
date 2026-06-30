@@ -62,6 +62,14 @@ docs-site/.vitepress/dist
 
 仓库提供了 `docker-compose.yml`、`Dockerfile.api`、前端 Nginx 镜像配置和 `.env.example`。它适合本机体验、内网演示和小规模部署基线：
 
+```bash
+bash scripts/deploy-mini-admin.sh
+```
+
+脚本会自动生成 `.env`、校验 Compose、构建镜像、启动容器并检查健康状态。它适合 1Panel 终端和普通 Linux 服务器。
+
+也可以手动执行：
+
 ```powershell
 Copy-Item .env.example .env
 docker compose config

@@ -39,6 +39,51 @@ MINIADMIN_REDIS_PASSWORD=replace_redis_password_change_me
 
 建议使用长度足够的随机字符串。`.env` 已被 `.gitignore` 忽略，不应提交到仓库。
 
+## 一键部署脚本
+
+如果你使用 1Panel，推荐先进入 1Panel 的 `主机 -> 终端`，拉取代码后直接执行仓库内脚本：
+
+```bash
+cd /opt/mini-admin
+bash scripts/deploy-mini-admin.sh
+```
+
+脚本会自动完成：
+
+- 检查 Docker 和 Docker Compose 是否可用。
+- 如果 `.env` 不存在，生成随机 JWT、MySQL 和 Redis 密码。
+- 如果 `.env` 仍是示例占位值，先备份再重新生成。
+- 执行 `docker compose config` 校验配置。
+- 执行 `docker compose up -d --build --remove-orphans` 构建并启动。
+- 检查 API 健康地址和前端访问地址。
+
+默认情况下，脚本会把 API 端口绑定为 `127.0.0.1:8080`，只允许服务器本机访问；前端端口为 `5666`，用于浏览器访问或 1Panel 网站反向代理。
+
+常用参数：
+
+```bash
+# 拉取最新代码后部署
+bash scripts/deploy-mini-admin.sh --pull
+
+# 不重新构建镜像，只启动容器
+bash scripts/deploy-mini-admin.sh --skip-build
+
+# 备份并重新生成 .env
+bash scripts/deploy-mini-admin.sh --force-env
+
+# 部署完成后持续查看日志
+bash scripts/deploy-mini-admin.sh --logs
+
+# 修改前端访问端口
+MINIADMIN_WEB_PORT=8088 bash scripts/deploy-mini-admin.sh
+```
+
+1Panel 绑定域名时，可以创建反向代理网站，代理地址填写：
+
+```text
+http://127.0.0.1:5666
+```
+
 ## 启动
 
 先校验 Compose 配置：
