@@ -5882,6 +5882,16 @@ public sealed class MiniAdminDatabaseInitializer(
 
     private async Task EnsureRoleMenuAsync(Guid roleId, Guid menuId, CancellationToken cancellationToken)
     {
+        if (!await MenuExistsOrIsTrackedAsync(menuId, cancellationToken))
+        {
+            return;
+        }
+
+        if (RoleMenuExistsInChangeTracker(roleId, menuId))
+        {
+            return;
+        }
+
         if (await dbContext.RoleMenus.AnyAsync(
             x => x.RoleId == roleId && x.MenuId == menuId,
             cancellationToken))
@@ -5900,18 +5910,7 @@ public sealed class MiniAdminDatabaseInitializer(
     {
         foreach (var menuId in GetTenantAdminMenuIds())
         {
-            if (await dbContext.RoleMenus.AnyAsync(
-                x => x.RoleId == MiniAdminSeedIds.TenantAdminRoleId && x.MenuId == menuId,
-                cancellationToken))
-            {
-                continue;
-            }
-
-            dbContext.RoleMenus.Add(new RoleMenu
-            {
-                RoleId = MiniAdminSeedIds.TenantAdminRoleId,
-                MenuId = menuId
-            });
+            await EnsureRoleMenuAsync(MiniAdminSeedIds.TenantAdminRoleId, menuId, cancellationToken);
         }
     }
 
@@ -5927,7 +5926,8 @@ public sealed class MiniAdminDatabaseInitializer(
         Guid permissionMenuId,
         CancellationToken cancellationToken)
     {
-        var hasParent = await dbContext.RoleMenus.AnyAsync(
+        var hasParent = RoleMenuExistsInChangeTracker(MiniAdminSeedIds.AdminRoleId, parentMenuId) ||
+            await dbContext.RoleMenus.AnyAsync(
             x => x.RoleId == MiniAdminSeedIds.AdminRoleId && x.MenuId == parentMenuId,
             cancellationToken);
         if (!hasParent)
@@ -5936,6 +5936,25 @@ public sealed class MiniAdminDatabaseInitializer(
         }
 
         await EnsureRoleMenuAsync(permissionMenuId, cancellationToken);
+    }
+
+    private async Task<bool> MenuExistsOrIsTrackedAsync(Guid menuId, CancellationToken cancellationToken)
+    {
+        if (dbContext.Menus.Local.Any(menu =>
+            menu.Id == menuId && dbContext.Entry(menu).State != EntityState.Deleted))
+        {
+            return true;
+        }
+
+        return await dbContext.Menus.AnyAsync(menu => menu.Id == menuId, cancellationToken);
+    }
+
+    private bool RoleMenuExistsInChangeTracker(Guid roleId, Guid menuId)
+    {
+        return dbContext.RoleMenus.Local.Any(roleMenu =>
+            roleMenu.RoleId == roleId &&
+            roleMenu.MenuId == menuId &&
+            dbContext.Entry(roleMenu).State != EntityState.Deleted);
     }
 
     private static IReadOnlyList<Guid> GetAdminMenuIds()

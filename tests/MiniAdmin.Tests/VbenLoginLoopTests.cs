@@ -6963,6 +6963,80 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
     }
 
     [Fact]
+    public async Task DatabaseInitializer_Does_Not_Add_RoleMenu_For_Missing_Menu()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<MiniAdminDbContext>();
+        var initializer = scope.ServiceProvider.GetRequiredService<IMiniAdminDatabaseInitializer>();
+        var adminRole = await dbContext.Roles.SingleAsync(role => role.Code == "admin");
+        var missingMenuId = Guid.NewGuid();
+
+        await InvokePrivateInitializerTaskAsync(
+            initializer,
+            "EnsureRoleMenuAsync",
+            adminRole.Id,
+            missingMenuId,
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            dbContext.RoleMenus.Local,
+            roleMenu => roleMenu.RoleId == adminRole.Id && roleMenu.MenuId == missingMenuId);
+        Assert.False(await dbContext.RoleMenus.AnyAsync(
+            roleMenu => roleMenu.RoleId == adminRole.Id && roleMenu.MenuId == missingMenuId));
+    }
+
+    [Fact]
+    public async Task DatabaseInitializer_Uses_Pending_Parent_RoleMenu_When_Granting_Permission()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<MiniAdminDbContext>();
+        var initializer = scope.ServiceProvider.GetRequiredService<IMiniAdminDatabaseInitializer>();
+        var adminRole = await dbContext.Roles.SingleAsync(role => role.Code == "admin");
+        var parentMenuId = Guid.NewGuid();
+        var permissionMenuId = Guid.NewGuid();
+
+        dbContext.Menus.AddRange(
+            new Menu
+            {
+                Id = parentMenuId,
+                Name = "PendingParentRoleMenuTest",
+                Path = "/test/pending-parent-role-menu",
+                Title = "PendingParentRoleMenuTest",
+                PermissionCode = "test:pending-parent-role-menu:query",
+                IsEnabled = true
+            },
+            new Menu
+            {
+                Id = permissionMenuId,
+                ParentId = parentMenuId,
+                Name = "PendingParentRoleMenuPermissionTest",
+                Path = "test:pending-parent-role-menu:action",
+                Title = "test:pending-parent-role-menu:action",
+                PermissionCode = "test:pending-parent-role-menu:action",
+                IsEnabled = true,
+                IsVisible = false
+            });
+        await dbContext.SaveChangesAsync();
+
+        dbContext.RoleMenus.Add(new RoleMenu
+        {
+            RoleId = adminRole.Id,
+            MenuId = parentMenuId
+        });
+
+        await InvokePrivateInitializerTaskAsync(
+            initializer,
+            "EnsureAdminPermissionIfParentAssignedAsync",
+            parentMenuId,
+            permissionMenuId,
+            CancellationToken.None);
+
+        Assert.Contains(
+            dbContext.RoleMenus.Local,
+            roleMenu => roleMenu.RoleId == adminRole.Id && roleMenu.MenuId == permissionMenuId);
+    }
+
+    [Fact]
     public async Task DatabaseInitializer_Records_Baseline_Seed_Version_Once()
     {
         const string baselineSeedVersion = "202605280001-baseline-system-data";
@@ -7445,6 +7519,20 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
                 await _client.DeleteAsync($"/system/file/{uploaded.Data.Id}");
             }
         }
+    }
+
+    private static async Task InvokePrivateInitializerTaskAsync(
+        IMiniAdminDatabaseInitializer initializer,
+        string methodName,
+        params object[] parameters)
+    {
+        var method = initializer.GetType()
+            .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(method =>
+                method.Name == methodName &&
+                method.GetParameters().Length == parameters.Length);
+        var task = Assert.IsAssignableFrom<Task>(method.Invoke(initializer, parameters));
+        await task;
     }
 
     private static object CreateCodeGeneratorRequest(
