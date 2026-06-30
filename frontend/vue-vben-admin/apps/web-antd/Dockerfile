@@ -3,6 +3,7 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 
+ENV CI=true
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 ARG NPM_REGISTRY=https://registry.npmmirror.com
