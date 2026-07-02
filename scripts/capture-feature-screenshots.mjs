@@ -11,9 +11,8 @@ const repoRoot = path.resolve(__dirname, '..');
 const screenshotDir = path.join(
   repoRoot,
   'docs-site',
-  'public',
-  'screenshots',
   'features',
+  'screenshots',
 );
 
 const webUrl = trimEndSlash(process.env.MINIADMIN_WEB_URL || 'http://localhost:5666');
@@ -319,7 +318,7 @@ async function fillFirst(page, selectors, value) {
 
 async function captureFeaturePage(page, feature) {
   const fileName = `${feature.id}.png`;
-  const relativePath = `/screenshots/features/${fileName}`;
+  const relativePath = `./screenshots/${fileName}`;
   const absolutePath = path.join(screenshotDir, fileName);
 
   try {
@@ -343,7 +342,7 @@ async function captureFeaturePage(page, feature) {
 
     return {
       ...feature,
-      image: `/screenshots/features/${feature.id}-failed.png`,
+      image: `./screenshots/${feature.id}-failed.png`,
       status: 'failed',
       error: error instanceof Error ? error.message : String(error),
     };

@@ -12,7 +12,7 @@
       "description": "平台管理员和演示租户共用的登录入口。",
       "path": "/auth/login",
       "public": true,
-      "image": "/screenshots/features/00-login.png",
+      "image": "./screenshots/00-login.png",
       "status": "success"
     },
     {
@@ -21,7 +21,7 @@
       "title": "分析页",
       "description": "后台首页、数据概览和快捷入口。",
       "path": "/analytics",
-      "image": "/screenshots/features/01-dashboard.png",
+      "image": "./screenshots/01-dashboard.png",
       "status": "success"
     },
     {
@@ -30,7 +30,7 @@
       "title": "审批中心",
       "description": "待办、申请、抄送、流程实例、流程定义和业务绑定统一入口。",
       "path": "/workflow/center",
-      "image": "/screenshots/features/02-workflow-center.png",
+      "image": "./screenshots/02-workflow-center.png",
       "status": "success"
     },
     {
@@ -39,7 +39,7 @@
       "title": "消息通知中心",
       "description": "站内信、通知模板、通知策略、个人订阅和投递记录。",
       "path": "/system/notification",
-      "image": "/screenshots/features/03-message-center.png",
+      "image": "./screenshots/03-message-center.png",
       "status": "success"
     },
     {
@@ -48,7 +48,7 @@
       "title": "租户管理",
       "description": "平台租户、租户套餐、初始化和租户状态管理。",
       "path": "/platform/tenant",
-      "image": "/screenshots/features/04-tenant.png",
+      "image": "./screenshots/04-tenant.png",
       "status": "success"
     },
     {
@@ -57,7 +57,7 @@
       "title": "用户管理",
       "description": "用户、部门、岗位、角色、状态和导入导出能力。",
       "path": "/system/user",
-      "image": "/screenshots/features/05-user.png",
+      "image": "./screenshots/05-user.png",
       "status": "success"
     },
     {
@@ -66,7 +66,7 @@
       "title": "角色管理",
       "description": "角色授权、菜单权限和数据权限配置。",
       "path": "/system/role",
-      "image": "/screenshots/features/06-role.png",
+      "image": "./screenshots/06-role.png",
       "status": "success"
     },
     {
@@ -75,7 +75,7 @@
       "title": "菜单管理",
       "description": "动态路由、菜单层级、组件路径和权限码维护。",
       "path": "/system/menu",
-      "image": "/screenshots/features/07-menu.png",
+      "image": "./screenshots/07-menu.png",
       "status": "success"
     },
     {
@@ -84,7 +84,7 @@
       "title": "权限诊断",
       "description": "追踪用户、角色、菜单、数据范围和缓存授权链路。",
       "path": "/system/permission-diagnostics",
-      "image": "/screenshots/features/08-permission-diagnostics.png",
+      "image": "./screenshots/08-permission-diagnostics.png",
       "status": "success"
     },
     {
@@ -93,7 +93,7 @@
       "title": "代码生成器",
       "description": "表结构读取、字段选择、生成预览、安装、历史和回滚。",
       "path": "/system/code-generator",
-      "image": "/screenshots/features/09-code-generator.png",
+      "image": "./screenshots/09-code-generator.png",
       "status": "success"
     },
     {
@@ -102,7 +102,7 @@
       "title": "示例订单",
       "description": "演示普通业务模块如何接入工作流审批。",
       "path": "/business/sample-order",
-      "image": "/screenshots/features/10-sample-order.png",
+      "image": "./screenshots/10-sample-order.png",
       "status": "success"
     },
     {
@@ -111,7 +111,7 @@
       "title": "客户资料",
       "description": "由代码生成器沉淀的客户资料 CRUD 示例。",
       "path": "/business/customer",
-      "image": "/screenshots/features/11-customer.png",
+      "image": "./screenshots/11-customer.png",
       "status": "success"
     },
     {
@@ -120,7 +120,7 @@
       "title": "文件管理",
       "description": "文件上传、下载、本地存储和 MinIO 扩展入口。",
       "path": "/system/file",
-      "image": "/screenshots/features/12-file-storage.png",
+      "image": "./screenshots/12-file-storage.png",
       "status": "success"
     },
     {
@@ -129,7 +129,7 @@
       "title": "系统监控",
       "description": "运行指标、健康状态和系统资源观察。",
       "path": "/system/monitor",
-      "image": "/screenshots/features/13-monitor.png",
+      "image": "./screenshots/13-monitor.png",
       "status": "success"
     },
     {
@@ -138,7 +138,7 @@
       "title": "告警中心",
       "description": "告警列表、告警规则和通知联动。",
       "path": "/system/alert",
-      "image": "/screenshots/features/14-alert-center.png",
+      "image": "./screenshots/14-alert-center.png",
       "status": "success"
     },
     {
@@ -147,7 +147,7 @@
       "title": "操作日志",
       "description": "接口审计、请求记录、实体变更和导出。",
       "path": "/system/log",
-      "image": "/screenshots/features/15-audit-log.png",
+      "image": "./screenshots/15-audit-log.png",
       "status": "success"
     },
     {
@@ -156,7 +156,7 @@
       "title": "登录日志",
       "description": "登录成功、失败、锁定和来源追踪。",
       "path": "/system/login-log",
-      "image": "/screenshots/features/16-login-log.png",
+      "image": "./screenshots/16-login-log.png",
       "status": "success"
     },
     {
@@ -165,7 +165,7 @@
       "title": "安全中心",
       "description": "登录安全策略、密码策略、安全事件和在线会话。",
       "path": "/system/security-center",
-      "image": "/screenshots/features/17-security-center.png",
+      "image": "./screenshots/17-security-center.png",
       "status": "success"
     },
     {
@@ -174,7 +174,7 @@
       "title": "项目运行管理",
       "description": "管理本地服务、运行日志、构建记录和构建产物。",
       "path": "/system/project-runtime",
-      "image": "/screenshots/features/18-project-runtime.png",
+      "image": "./screenshots/18-project-runtime.png",
       "status": "success"
     },
     {
@@ -183,7 +183,7 @@
       "title": "定时任务",
       "description": "任务配置、手动执行、任务日志和运行状态。",
       "path": "/system/scheduled-job",
-      "image": "/screenshots/features/19-scheduled-job.png",
+      "image": "./screenshots/19-scheduled-job.png",
       "status": "success"
     }
   ]
