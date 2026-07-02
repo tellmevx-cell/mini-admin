@@ -4,6 +4,7 @@ using System.Security.Claims;
 using MiniAdmin.Api.CodeGenerators;
 using MiniAdmin.Api.Composition;
 using MiniAdmin.Api.Endpoints;
+using MiniAdmin.Api.RateLimiting;
 using MiniAdmin.Application.AppBranding;
 using MiniAdmin.Application.Alerts;
 using MiniAdmin.Application.AuditLogs;
@@ -61,6 +62,7 @@ using MiniAdmin.Infrastructure.SystemMonitor;
 using MiniAdmin.Domain.Shared.MultiTenancy;
 using MiniAdmin.Shared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -168,6 +170,7 @@ builder.Services
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddMiniAdminRateLimiting(builder.Configuration);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("VbenDev", policy =>
@@ -211,6 +214,7 @@ app.Use(async (context, next) =>
     currentTenant.Change(tenantId, context.User.FindFirstValue("tenant_code"));
     await next();
 });
+app.UseRateLimiter();
 app.UseAuthorization();
 app.UseMiddleware<AuditLogMiddleware>();
 

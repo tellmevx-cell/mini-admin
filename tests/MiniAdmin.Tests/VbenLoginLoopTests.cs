@@ -23,11 +23,13 @@ namespace MiniAdmin.Tests;
 public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Program>>, IDisposable
 {
     private readonly HttpClient _client;
+    private readonly WebApplicationFactory<Program> _rootFactory;
     private readonly WebApplicationFactory<Program> _factory;
 
     public VbenLoginLoopTests(WebApplicationFactory<Program> factory)
     {
-        _factory = factory.WithWebHostBuilder(builder =>
+        _rootFactory = factory;
+        _factory = _rootFactory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
             builder.ConfigureAppConfiguration((_, configuration) =>
@@ -37,7 +39,8 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
                     ["Database:Provider"] = "InMemory",
                     ["Database:InMemoryDatabaseName"] = $"MiniAdminTests-{Guid.NewGuid():N}",
                     ["Cache:Provider"] = "Memory",
-                    ["Cache:Redis:Configuration"] = string.Empty
+                    ["Cache:Redis:Configuration"] = string.Empty,
+                    ["RateLimiting:Enabled"] = "false"
                 });
             });
         });
@@ -48,6 +51,80 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
     {
         _client.Dispose();
         _factory.Dispose();
+    }
+
+    private WebApplicationFactory<Program> CreateRateLimitedFactory(Dictionary<string, string?> overrides)
+    {
+        var configuration = new Dictionary<string, string?>
+        {
+            ["Database:Provider"] = "InMemory",
+            ["Database:InMemoryDatabaseName"] = $"MiniAdminRateLimitTests-{Guid.NewGuid():N}",
+            ["Cache:Provider"] = "Memory",
+            ["Cache:Redis:Configuration"] = string.Empty,
+            ["RateLimiting:Enabled"] = "true"
+        };
+
+        foreach (var item in overrides)
+        {
+            configuration[item.Key] = item.Value;
+        }
+
+        return _rootFactory.WithWebHostBuilder(builder =>
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureAppConfiguration((_, configurationBuilder) =>
+            {
+                configurationBuilder.AddInMemoryCollection(configuration);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task RateLimiting_Global_Returns_TooManyRequests_When_Limit_Exceeded()
+    {
+        using var factory = CreateRateLimitedFactory(new Dictionary<string, string?>
+        {
+            ["RateLimiting:PermitLimit"] = "1",
+            ["RateLimiting:WindowSeconds"] = "60",
+            ["RateLimiting:LoginPermitLimit"] = "1000"
+        });
+        using var client = factory.CreateClient();
+
+        var first = await client.GetAsync("/health");
+        var second = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
+        Assert.NotNull(second.Headers.RetryAfter);
+
+        var json = await second.Content.ReadFromJsonAsync<ApiEnvelope<object?>>();
+        Assert.NotNull(json);
+        Assert.NotEqual(0, json.Code);
+        Assert.Contains("频繁", json.Message);
+    }
+
+    [Fact]
+    public async Task RateLimiting_Login_Returns_TooManyRequests_When_Limit_Exceeded()
+    {
+        using var factory = CreateRateLimitedFactory(new Dictionary<string, string?>
+        {
+            ["RateLimiting:PermitLimit"] = "1000",
+            ["RateLimiting:LoginPermitLimit"] = "1",
+            ["RateLimiting:LoginWindowSeconds"] = "60"
+        });
+        using var client = factory.CreateClient();
+
+        var payload = new
+        {
+            username = "admin",
+            password = "wrong-password"
+        };
+
+        var first = await client.PostAsJsonAsync("/auth/login", payload);
+        var second = await client.PostAsJsonAsync("/auth/login", payload);
+
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, first.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
     }
 
     [Fact]

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Security.Claims;
 using MiniAdmin.Api.CodeGenerators;
+using MiniAdmin.Api.RateLimiting;
 using MiniAdmin.Application.AppBranding;
 using MiniAdmin.Application.Alerts;
 using MiniAdmin.Application.AuditLogs;
@@ -59,6 +60,7 @@ using MiniAdmin.Infrastructure.SystemMonitor;
 using MiniAdmin.Domain.Shared.MultiTenancy;
 using MiniAdmin.Shared;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -111,6 +113,7 @@ public static class FileAndAuditEndpointExtensions
             return Results.Ok(ApiResponse<FileDto>.Ok(uploaded));
         })
         .DisableAntiforgery()
+        .RequireRateLimiting(MiniAdminRateLimitPolicyNames.Upload)
         .RequirePermission("system:file:upload");
 
         app.MapGet("/system/file/{id:guid}/download", async (

@@ -78,6 +78,39 @@ docker compose up -d --build
 
 上线前必须修改 `.env` 中的 JWT、MySQL、Redis 密码，并把 `.env` 保留在服务器本地，不要提交到仓库。完整说明见 [Docker Compose 指南](./docker-compose.md)。
 
+## 接口限流配置
+
+MiniAdmin 后端内置 ASP.NET Core RateLimiter，用于保护后台接口、登录接口和文件上传接口。
+
+默认配置位于 `src/MiniAdmin.Api/appsettings.json`：
+
+| 配置项 | 默认值 | 说明 |
+| --- | ---: | --- |
+| `RateLimiting:Enabled` | `true` | 是否启用后端限流 |
+| `RateLimiting:PermitLimit` | `600` | 全局每个用户或 IP 在窗口期内允许的请求数 |
+| `RateLimiting:WindowSeconds` | `60` | 全局固定窗口秒数 |
+| `RateLimiting:QueueLimit` | `0` | 全局限流排队数量，默认不排队 |
+| `RateLimiting:LoginPermitLimit` | `10` | 登录接口每个 IP 在窗口期内允许的请求数 |
+| `RateLimiting:LoginWindowSeconds` | `60` | 登录接口固定窗口秒数 |
+| `RateLimiting:LoginQueueLimit` | `0` | 登录接口限流排队数量，默认不排队 |
+| `RateLimiting:UploadPermitLimit` | `4` | 文件上传接口每个用户或 IP 的并发上传数 |
+| `RateLimiting:UploadQueueLimit` | `0` | 上传并发超限后的排队数量，默认不排队 |
+
+触发限流时，接口返回 `HTTP 429 Too Many Requests`，响应体仍使用统一的 `ApiResponse` 格式，并尽量带上 `Retry-After` 响应头。
+
+Docker 或 1Panel 环境建议用环境变量覆盖，例如：
+
+```bash
+RateLimiting__Enabled=true
+RateLimiting__PermitLimit=600
+RateLimiting__WindowSeconds=60
+RateLimiting__LoginPermitLimit=10
+RateLimiting__LoginWindowSeconds=60
+RateLimiting__UploadPermitLimit=4
+```
+
+如果前面还有 Nginx、CDN 或 1Panel 反向代理，建议同时在网关层配置基础限流。后端限流是应用层兜底，登录前主要按远端 IP 限流，登录后按用户限流。
+
 ## 数据库准备
 
 生产环境建议使用 MySQL。
