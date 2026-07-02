@@ -65,6 +65,27 @@ MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 Saa
 - 生成前预览、生成后安装、生成历史、产物治理和回滚。
 - 支持生成业务模块，并可绑定工作流审批。
 
+## 功能截图展示
+
+功能展示图已沉淀到文档站，适合 GitHub 访客快速了解系统界面和能力边界：
+
+- [功能截图展示](docs-site/features/showcase.md)
+- [功能总览](docs-site/features/overview.md)
+- [工作流与消息中心运行手册](docs-site/runbooks/workflow-message-center.md)
+
+如果你在本地启动了前后端，可以重新生成截图：
+
+```powershell
+pnpm screenshots:features
+```
+
+默认访问 `http://localhost:5666`，如果你的本地前端端口不同，可以指定：
+
+```powershell
+$env:MINIADMIN_WEB_URL = "http://localhost:5600"
+pnpm screenshots:features
+```
+
 ## 快速开始
 
 ### 环境要求

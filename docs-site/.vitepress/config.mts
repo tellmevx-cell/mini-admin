@@ -45,6 +45,7 @@ export default defineConfig({
           text: '功能说明',
           items: [
             { text: '能力总览', link: '/features/overview' },
+            { text: '功能截图展示', link: '/features/showcase' },
             { text: '认证与 RBAC', link: '/features/auth-rbac' },
             { text: 'SaaS 租户', link: '/features/tenant' },
             { text: '工作流审批', link: '/features/workflow' },

@@ -5,6 +5,7 @@
   "scripts": {
     "docs:dev": "pnpm --dir docs-site dev",
     "docs:build": "pnpm --dir docs-site build",
-    "docs:preview": "pnpm --dir docs-site preview"
+    "docs:preview": "pnpm --dir docs-site preview",
+    "screenshots:features": "node scripts/capture-feature-screenshots.mjs"
   }
 }

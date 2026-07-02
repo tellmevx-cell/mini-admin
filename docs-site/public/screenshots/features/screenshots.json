@@ -1,0 +1,190 @@
+{
+  "generatedAt": "2026-07-02T06:19:30.000Z",
+  "webUrl": "http://localhost:5600",
+  "total": 20,
+  "succeeded": 20,
+  "failed": 0,
+  "items": [
+    {
+      "id": "00-login",
+      "group": "访问入口",
+      "title": "登录入口",
+      "description": "平台管理员和演示租户共用的登录入口。",
+      "path": "/auth/login",
+      "public": true,
+      "image": "/screenshots/features/00-login.png",
+      "status": "success"
+    },
+    {
+      "id": "01-dashboard",
+      "group": "工作台",
+      "title": "分析页",
+      "description": "后台首页、数据概览和快捷入口。",
+      "path": "/analytics",
+      "image": "/screenshots/features/01-dashboard.png",
+      "status": "success"
+    },
+    {
+      "id": "02-workflow-center",
+      "group": "工作流审批",
+      "title": "审批中心",
+      "description": "待办、申请、抄送、流程实例、流程定义和业务绑定统一入口。",
+      "path": "/workflow/center",
+      "image": "/screenshots/features/02-workflow-center.png",
+      "status": "success"
+    },
+    {
+      "id": "03-message-center",
+      "group": "消息中心",
+      "title": "消息通知中心",
+      "description": "站内信、通知模板、通知策略、个人订阅和投递记录。",
+      "path": "/system/notification",
+      "image": "/screenshots/features/03-message-center.png",
+      "status": "success"
+    },
+    {
+      "id": "04-tenant",
+      "group": "SaaS 多租户",
+      "title": "租户管理",
+      "description": "平台租户、租户套餐、初始化和租户状态管理。",
+      "path": "/platform/tenant",
+      "image": "/screenshots/features/04-tenant.png",
+      "status": "success"
+    },
+    {
+      "id": "05-user",
+      "group": "认证与 RBAC",
+      "title": "用户管理",
+      "description": "用户、部门、岗位、角色、状态和导入导出能力。",
+      "path": "/system/user",
+      "image": "/screenshots/features/05-user.png",
+      "status": "success"
+    },
+    {
+      "id": "06-role",
+      "group": "认证与 RBAC",
+      "title": "角色管理",
+      "description": "角色授权、菜单权限和数据权限配置。",
+      "path": "/system/role",
+      "image": "/screenshots/features/06-role.png",
+      "status": "success"
+    },
+    {
+      "id": "07-menu",
+      "group": "认证与 RBAC",
+      "title": "菜单管理",
+      "description": "动态路由、菜单层级、组件路径和权限码维护。",
+      "path": "/system/menu",
+      "image": "/screenshots/features/07-menu.png",
+      "status": "success"
+    },
+    {
+      "id": "08-permission-diagnostics",
+      "group": "认证与 RBAC",
+      "title": "权限诊断",
+      "description": "追踪用户、角色、菜单、数据范围和缓存授权链路。",
+      "path": "/system/permission-diagnostics",
+      "image": "/screenshots/features/08-permission-diagnostics.png",
+      "status": "success"
+    },
+    {
+      "id": "09-code-generator",
+      "group": "代码生成器",
+      "title": "代码生成器",
+      "description": "表结构读取、字段选择、生成预览、安装、历史和回滚。",
+      "path": "/system/code-generator",
+      "image": "/screenshots/features/09-code-generator.png",
+      "status": "success"
+    },
+    {
+      "id": "10-sample-order",
+      "group": "业务示例",
+      "title": "示例订单",
+      "description": "演示普通业务模块如何接入工作流审批。",
+      "path": "/business/sample-order",
+      "image": "/screenshots/features/10-sample-order.png",
+      "status": "success"
+    },
+    {
+      "id": "11-customer",
+      "group": "业务示例",
+      "title": "客户资料",
+      "description": "由代码生成器沉淀的客户资料 CRUD 示例。",
+      "path": "/business/customer",
+      "image": "/screenshots/features/11-customer.png",
+      "status": "success"
+    },
+    {
+      "id": "12-file-storage",
+      "group": "文件存储",
+      "title": "文件管理",
+      "description": "文件上传、下载、本地存储和 MinIO 扩展入口。",
+      "path": "/system/file",
+      "image": "/screenshots/features/12-file-storage.png",
+      "status": "success"
+    },
+    {
+      "id": "13-monitor",
+      "group": "监控与审计",
+      "title": "系统监控",
+      "description": "运行指标、健康状态和系统资源观察。",
+      "path": "/system/monitor",
+      "image": "/screenshots/features/13-monitor.png",
+      "status": "success"
+    },
+    {
+      "id": "14-alert-center",
+      "group": "监控与审计",
+      "title": "告警中心",
+      "description": "告警列表、告警规则和通知联动。",
+      "path": "/system/alert",
+      "image": "/screenshots/features/14-alert-center.png",
+      "status": "success"
+    },
+    {
+      "id": "15-audit-log",
+      "group": "监控与审计",
+      "title": "操作日志",
+      "description": "接口审计、请求记录、实体变更和导出。",
+      "path": "/system/log",
+      "image": "/screenshots/features/15-audit-log.png",
+      "status": "success"
+    },
+    {
+      "id": "16-login-log",
+      "group": "安全中心",
+      "title": "登录日志",
+      "description": "登录成功、失败、锁定和来源追踪。",
+      "path": "/system/login-log",
+      "image": "/screenshots/features/16-login-log.png",
+      "status": "success"
+    },
+    {
+      "id": "17-security-center",
+      "group": "安全中心",
+      "title": "安全中心",
+      "description": "登录安全策略、密码策略、安全事件和在线会话。",
+      "path": "/system/security-center",
+      "image": "/screenshots/features/17-security-center.png",
+      "status": "success"
+    },
+    {
+      "id": "18-project-runtime",
+      "group": "工程化",
+      "title": "项目运行管理",
+      "description": "管理本地服务、运行日志、构建记录和构建产物。",
+      "path": "/system/project-runtime",
+      "image": "/screenshots/features/18-project-runtime.png",
+      "status": "success"
+    },
+    {
+      "id": "19-scheduled-job",
+      "group": "工程化",
+      "title": "定时任务",
+      "description": "任务配置、手动执行、任务日志和运行状态。",
+      "path": "/system/scheduled-job",
+      "image": "/screenshots/features/19-scheduled-job.png",
+      "status": "success"
+    }
+  ]
+}
