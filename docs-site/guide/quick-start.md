@@ -135,10 +135,16 @@ http://localhost:5021
 
 ### Docker 方式启动失败
 
-先校验 Compose 配置：
+推荐直接重新执行一键脚本，它会定位失败阶段并打印相关日志：
+
+```bash
+bash deploy.sh
+```
+
+也可以手工校验 Compose 配置：
 
 ```powershell
 docker compose config
 ```
 
-如果提示缺少环境变量，确认已经从 `.env.example` 复制出 `.env`，并替换了其中的密码和 `MINIADMIN_JWT_SIGNING_KEY`。完整排查步骤见 [Docker Compose 指南](./docker-compose.md)。
+如果提示缺少环境变量，首次部署不要手工复制占位配置，直接让 `deploy.sh` 生成随机密码。已有数据卷时不要随意更换 MySQL 密码，更不要直接执行 `docker compose down -v`。完整排查步骤见 [Docker Compose 指南](./docker-compose.md)。

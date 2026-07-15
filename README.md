@@ -142,7 +142,22 @@ http://localhost:5666
 Linux / 1Panel 服务器推荐直接执行：
 
 ```bash
-bash scripts/deploy-mini-admin.sh
+bash deploy.sh
+```
+
+脚本会自动生成生产 `.env`、按顺序构建并启动 MySQL、Redis、API、Gateway、Web，等待数据库初始化完成，并验证整条 `/api` 代理链路。失败时会直接显示对应容器日志。
+
+国内服务器无法访问 GitHub 时，先在本机生成只包含 Git 已提交文件的部署包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/package-server.ps1
+```
+
+通过 1Panel 上传 `artifacts/deploy/mini-admin-server-*.tar.gz`，解压后执行：
+
+```bash
+cd /opt/mini-admin
+bash deploy.sh
 ```
 
 本地手动体验也可以执行：
@@ -157,9 +172,9 @@ docker compose up -d --build
 
 ```text
 前端：http://localhost:5666
-网关：http://localhost:8088/health
-API 代理：http://localhost:8088/api/health
-后端直连：http://localhost:8080/health
+网关：http://127.0.0.1:8088/health
+API 代理：http://127.0.0.1:8088/api/health
+后端直连：http://127.0.0.1:8080/health
 ```
 
 完整说明见 [Docker Compose 指南](docs-site/guide/docker-compose.md)。

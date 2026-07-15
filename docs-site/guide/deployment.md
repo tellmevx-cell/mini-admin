@@ -83,10 +83,18 @@ docs-site/.vitepress/dist
 仓库提供了 `docker-compose.yml`、`Dockerfile.api`、`Dockerfile.gateway`、前端 Nginx 镜像配置和 `.env.example`。它适合本机体验、内网演示和小规模部署基线：
 
 ```bash
-bash scripts/deploy-mini-admin.sh
+bash deploy.sh
 ```
 
-脚本会自动生成 `.env`、校验 Compose、构建镜像、启动容器并检查健康状态。它适合 1Panel 终端和普通 Linux 服务器。
+脚本会自动生成 `.env`、校验 Compose、顺序构建镜像、分层启动容器并检查完整代理链路。失败时会打印当前服务及其依赖日志，适合 1Panel 终端和普通 Linux 服务器。
+
+国内服务器无法从 GitHub 拉取代码时，在本机执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/package-server.ps1
+```
+
+将生成的 `artifacts/deploy/mini-admin-server-*.tar.gz` 上传到服务器并解压，然后执行 `bash deploy.sh`。部署包基于 Git 已提交文件生成，不包含服务器根 `.env`、被忽略的本地配置或构建产物，并会阻止 appsettings 本地配置、证书私钥等敏感文件进入压缩包。
 
 也可以手动执行：
 
