@@ -3090,12 +3090,15 @@ public sealed class WorkflowAppServiceTests
         string webhookEndpointUrl = "")
     {
         var currentTenant = new TestCurrentTenant();
-        var templateRepository = new EfNotificationTemplateRepository(dbContext);
+        var templateRepository = new EfNotificationTemplateRepository(
+            dbContext,
+            currentTenant,
+            new TestPlatformCache());
         return new WorkflowAppService(
             new EfWorkflowRepository(
                 dbContext,
                 currentTenant,
-                new NotificationTemplateRenderer(templateRepository),
+                new ScribanNotificationTemplateRenderer(templateRepository),
                 CreateNotificationDeliveryService(
                     dbContext,
                     currentTenant,

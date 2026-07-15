@@ -19,7 +19,8 @@ public sealed class SystemMonitorAppService(
     IHostEnvironment hostEnvironment,
     IOptions<CacheOptions> cacheOptions,
     IOptions<DatabaseOptions> databaseOptions,
-    ISecurityPolicyRepository securityPolicyRepository) : ISystemMonitorAppService
+    ISecurityPolicyRepository securityPolicyRepository,
+    ISystemInformationProvider systemInformationProvider) : ISystemMonitorAppService
 {
     private static readonly DateTimeOffset StartedAt = DateTimeOffset.UtcNow;
 
@@ -74,13 +75,21 @@ public sealed class SystemMonitorAppService(
                 RuntimeInformation.FrameworkDescription,
                 StartedAt,
                 Math.Max(0, (long)(now - StartedAt).TotalSeconds),
-                hostEnvironment.ContentRootPath),
+                hostEnvironment.ContentRootPath,
+                Environment.ProcessId,
+                RuntimeInformation.ProcessArchitecture.ToString(),
+                Environment.Is64BitProcess,
+                System.Runtime.GCSettings.IsServerGC,
+                System.Runtime.GCSettings.LatencyMode.ToString()),
             Server: new SystemMonitorServerDto(
                 Environment.MachineName,
                 RuntimeInformation.OSDescription,
                 RuntimeInformation.OSArchitecture.ToString()),
             Dependencies: dependencies,
-            Recent: recent);
+            Recent: recent,
+            Hardware: systemInformationProvider.GetHardware(),
+            Disks: systemInformationProvider.GetDisks(),
+            Networks: systemInformationProvider.GetNetworks());
     }
 
     private async Task<SystemMonitorDependencyDto> CheckDatabaseAsync(CancellationToken cancellationToken)

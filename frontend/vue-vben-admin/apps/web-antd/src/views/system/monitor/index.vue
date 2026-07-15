@@ -10,6 +10,7 @@ import {
   type SystemMonitorDependency,
   type SystemMonitorOverview,
 } from '#/api/system/monitor';
+import { $t } from '#/locales';
 
 const loading = ref(false);
 const overview = ref<SystemMonitorOverview>();
@@ -26,25 +27,25 @@ const summaryItems = computed(() => {
   return [
     {
       description: formatTime(data.api.timestamp),
-      label: 'API 状态',
+      label: $t('page.monitor.apiStatus'),
       status: data.api.status,
       value: data.api.status,
     },
     {
       description: dependencyDescription(mysql),
-      label: 'MySQL',
+      label: $t('page.monitor.mysql'),
       status: mysql?.status ?? 'Unknown',
       value: formatElapsed(mysql),
     },
     {
       description: dependencyDescription(cache),
-      label: '缓存',
+      label: $t('page.monitor.cache'),
       status: cache?.status ?? 'Unknown',
       value: formatElapsed(cache),
     },
     {
       description: `${formatBytes(data.memory.usedPhysicalMemoryBytes)} / ${formatBytes(data.memory.totalPhysicalMemoryBytes)}`,
-      label: '内存使用率',
+      label: $t('page.monitor.memoryUsage'),
       status:
         data.memory.physicalMemoryUsedPercent >= 85 ? 'Warning' : 'Healthy',
       value: `${data.memory.physicalMemoryUsedPercent}%`,
@@ -65,7 +66,7 @@ async function loadOverview() {
   try {
     overview.value = await getSystemMonitorOverviewApi();
   } catch {
-    message.error('系统监控数据加载失败');
+    message.error($t('page.monitor.loadFailed'));
   } finally {
     loading.value = false;
   }
@@ -85,7 +86,7 @@ function statusColor(status?: string) {
 }
 
 function dependencyDescription(dependency?: SystemMonitorDependency) {
-  return dependency?.description ?? '暂无数据';
+  return dependency?.description ?? $t('page.monitor.noData');
 }
 
 function formatElapsed(dependency?: SystemMonitorDependency) {
@@ -130,14 +131,31 @@ function formatUptime(seconds: number) {
   const parts = [];
 
   if (days > 0) {
-    parts.push(`${days} 天`);
+    parts.push(`${days} ${$t('page.monitor.day')}`);
   }
   if (hours > 0) {
-    parts.push(`${hours} 小时`);
+    parts.push(`${hours} ${$t('page.monitor.hour')}`);
   }
-  parts.push(`${minutes} 分钟`);
+  parts.push(`${minutes} ${$t('page.monitor.minute')}`);
 
   return parts.join(' ');
+}
+
+function formatBitRate(bitsPerSecond: number) {
+  if (bitsPerSecond >= 1_000_000_000) {
+    return `${(bitsPerSecond / 1_000_000_000).toFixed(2)} Gbps`;
+  }
+  if (bitsPerSecond >= 1_000_000) {
+    return `${(bitsPerSecond / 1_000_000).toFixed(2)} Mbps`;
+  }
+  if (bitsPerSecond >= 1_000) {
+    return `${(bitsPerSecond / 1_000).toFixed(2)} Kbps`;
+  }
+  return `${bitsPerSecond} bps`;
+}
+
+function displayList(values?: string[]) {
+  return values?.length ? values.join(' / ') : $t('page.monitor.notDetected');
 }
 
 onMounted(loadOverview);
@@ -148,10 +166,12 @@ onMounted(loadOverview);
     <div class="monitor-workspace">
       <div class="monitor-header">
         <div>
-          <h2>系统监控</h2>
-          <p>查看应用运行状态、服务器资源和关键依赖健康情况</p>
+          <h2>{{ $t('page.monitor.title') }}</h2>
+          <p>{{ $t('page.monitor.subtitle') }}</p>
         </div>
-        <Button :loading="loading" @click="loadOverview">刷新</Button>
+        <Button :loading="loading" @click="loadOverview">
+          {{ $t('page.monitor.refresh') }}
+        </Button>
       </div>
 
       <Spin :spinning="loading && !overview">
@@ -177,8 +197,8 @@ onMounted(loadOverview);
           <div class="metric-grid">
             <section class="info-panel resource-panel">
               <div class="panel-title">
-                <h3>CPU</h3>
-                <span>进程视角</span>
+                <h3>{{ $t('page.monitor.cpu') }}</h3>
+                <span>{{ $t('page.monitor.processView') }}</span>
               </div>
               <div class="resource-meter">
                 <Progress
@@ -189,17 +209,19 @@ onMounted(loadOverview);
                 />
                 <div class="resource-copy">
                   <div class="resource-value">{{ cpuPercent }}%</div>
-                  <div class="resource-caption">进程平均 CPU</div>
+                  <div class="resource-caption">
+                    {{ $t('page.monitor.averageProcessCpu') }}
+                  </div>
                 </div>
               </div>
               <table class="info-table">
                 <tbody>
                   <tr>
-                    <th>核心数</th>
+                    <th>{{ $t('page.monitor.cores') }}</th>
                     <td>{{ overview.cpu.processorCount }}</td>
                   </tr>
                   <tr>
-                    <th>线程数</th>
+                    <th>{{ $t('page.monitor.threads') }}</th>
                     <td>{{ overview.cpu.threadCount }}</td>
                   </tr>
                 </tbody>
@@ -208,8 +230,8 @@ onMounted(loadOverview);
 
             <section class="info-panel resource-panel">
               <div class="panel-title">
-                <h3>内存</h3>
-                <span>系统视角</span>
+                <h3>{{ $t('page.monitor.memory') }}</h3>
+                <span>{{ $t('page.monitor.systemView') }}</span>
               </div>
               <div class="resource-meter">
                 <Progress
@@ -222,19 +244,19 @@ onMounted(loadOverview);
                   <div class="resource-value">{{ memoryPercent }}%</div>
                   <div class="resource-caption">
                     {{ formatBytes(overview.memory.usedPhysicalMemoryBytes) }}
-                    已用
+                    {{ $t('page.monitor.used') }}
                   </div>
                 </div>
               </div>
               <div class="memory-split">
                 <div>
-                  <span>总内存</span>
+                  <span>{{ $t('page.monitor.totalMemory') }}</span>
                   <strong>
                     {{ formatBytes(overview.memory.totalPhysicalMemoryBytes) }}
                   </strong>
                 </div>
                 <div>
-                  <span>可用内存</span>
+                  <span>{{ $t('page.monitor.availableMemory') }}</span>
                   <strong>
                     {{
                       formatBytes(overview.memory.availablePhysicalMemoryBytes)
@@ -242,7 +264,7 @@ onMounted(loadOverview);
                   </strong>
                 </div>
                 <div>
-                  <span>已用内存</span>
+                  <span>{{ $t('page.monitor.usedMemory') }}</span>
                   <strong>
                     {{ formatBytes(overview.memory.usedPhysicalMemoryBytes) }}
                   </strong>
@@ -251,19 +273,19 @@ onMounted(loadOverview);
               <table class="info-table">
                 <tbody>
                   <tr>
-                    <th>进程工作集</th>
+                    <th>{{ $t('page.monitor.workingSet') }}</th>
                     <td>{{ formatBytes(overview.memory.workingSetBytes) }}</td>
                   </tr>
                   <tr>
-                    <th>托管堆</th>
+                    <th>{{ $t('page.monitor.managedHeap') }}</th>
                     <td>{{ formatBytes(overview.memory.managedHeapBytes) }}</td>
                   </tr>
                   <tr>
-                    <th>GC 堆大小</th>
+                    <th>{{ $t('page.monitor.gcHeap') }}</th>
                     <td>{{ formatBytes(overview.memory.gcTotalMemoryBytes) }}</td>
                   </tr>
                   <tr>
-                    <th>GC 次数</th>
+                    <th>{{ $t('page.monitor.gcCollections') }}</th>
                     <td>
                       Gen0 {{ overview.memory.gen0Collections }} / Gen1
                       {{ overview.memory.gen1Collections }} / Gen2
@@ -277,48 +299,174 @@ onMounted(loadOverview);
 
           <section class="info-panel">
             <div class="panel-title">
-              <h3>应用与服务器</h3>
+              <h3>{{ $t('page.monitor.applicationServer') }}</h3>
             </div>
             <div class="detail-grid">
               <div class="detail-item">
-                <span>应用环境</span>
+                <span>{{ $t('page.monitor.environment') }}</span>
                 <strong>{{ overview.application.environment }}</strong>
               </div>
               <div class="detail-item">
-                <span>运行时</span>
+                <span>{{ $t('page.monitor.runtime') }}</span>
                 <strong>{{ overview.application.runtimeVersion }}</strong>
               </div>
               <div class="detail-item">
-                <span>服务器</span>
+                <span>{{ $t('page.monitor.server') }}</span>
                 <strong>{{ overview.server.machineName }}</strong>
               </div>
               <div class="detail-item">
-                <span>操作系统</span>
+                <span>{{ $t('page.monitor.operatingSystem') }}</span>
                 <strong>{{ overview.server.operatingSystem }}</strong>
               </div>
               <div class="detail-item">
-                <span>系统架构</span>
+                <span>{{ $t('page.monitor.architecture') }}</span>
                 <strong>{{ overview.server.architecture }}</strong>
               </div>
               <div class="detail-item">
-                <span>运行时长</span>
+                <span>{{ $t('page.monitor.uptime') }}</span>
                 <strong>{{ formatUptime(overview.application.uptimeSeconds) }}</strong>
               </div>
               <div class="detail-item">
-                <span>启动时间</span>
+                <span>{{ $t('page.monitor.process') }}</span>
+                <strong>
+                  PID {{ overview.application.processId }} /
+                  {{ overview.application.processArchitecture }}
+                </strong>
+              </div>
+              <div class="detail-item">
+                <span>{{ $t('page.monitor.gcMode') }}</span>
+                <strong>
+                  {{ overview.application.serverGarbageCollection ? 'Server' : 'Workstation' }}
+                  / {{ overview.application.garbageCollectionLatencyMode }}
+                </strong>
+              </div>
+              <div class="detail-item">
+                <span>{{ $t('page.monitor.startedAt') }}</span>
                 <strong>{{ formatTime(overview.application.startedAt) }}</strong>
               </div>
+              <div class="detail-item">
+                <span>{{ $t('page.monitor.device') }}</span>
+                <strong>
+                  {{ overview.hardware.manufacturer }} /
+                  {{ overview.hardware.model }}
+                </strong>
+              </div>
+              <div class="detail-item">
+                <span>{{ $t('page.monitor.motherboard') }}</span>
+                <strong>
+                  {{ overview.hardware.motherboardManufacturer }} /
+                  {{ overview.hardware.motherboardModel }}
+                </strong>
+              </div>
               <div class="detail-item wide-item">
-                <span>内容根目录</span>
+                <span>{{ $t('page.monitor.cpuModel') }}</span>
+                <strong>{{ overview.hardware.cpuModel }}</strong>
+              </div>
+              <div class="detail-item wide-item">
+                <span>{{ $t('page.monitor.gpu') }}</span>
+                <strong>{{ displayList(overview.hardware.gpus) }}</strong>
+              </div>
+              <div class="detail-item wide-item">
+                <span>{{ $t('page.monitor.contentRoot') }}</span>
                 <strong>{{ overview.application.contentRootPath }}</strong>
               </div>
             </div>
           </section>
 
+          <div class="telemetry-grid">
+            <section class="info-panel">
+              <div class="panel-title">
+                <h3>{{ $t('page.monitor.disk') }}</h3>
+                <span>
+                  {{ overview.disks.length }} {{ $t('page.monitor.volumes') }}
+                </span>
+              </div>
+              <div v-if="overview.disks.length" class="disk-list">
+                <div
+                  v-for="disk in overview.disks"
+                  :key="`${disk.name}-${disk.rootPath}`"
+                  class="disk-row"
+                >
+                  <div class="disk-heading">
+                    <div>
+                      <strong>{{ disk.name }}</strong>
+                      <span>
+                        {{ disk.driveType }} ·
+                        {{ disk.fileSystem || $t('page.monitor.unknownFormat') }}
+                      </span>
+                    </div>
+                    <span v-if="disk.isReady">
+                      {{ formatBytes(disk.usedBytes) }} /
+                      {{ formatBytes(disk.totalBytes) }}
+                    </span>
+                    <Tag v-else>{{ $t('page.monitor.notReady') }}</Tag>
+                  </div>
+                  <Progress
+                    v-if="disk.isReady"
+                    :percent="clampPercent(disk.usedPercent)"
+                    :show-info="false"
+                    :status="progressStatus(disk.usedPercent)"
+                    size="small"
+                  />
+                </div>
+              </div>
+              <div v-else class="empty-copy">
+                {{ $t('page.monitor.noDisks') }}
+              </div>
+            </section>
+
+            <section class="info-panel">
+              <div class="panel-title">
+                <h3>{{ $t('page.monitor.network') }}</h3>
+                <span>
+                  {{ overview.networks.length }}
+                  {{ $t('page.monitor.interfaces') }}
+                </span>
+              </div>
+              <div v-if="overview.networks.length" class="network-list">
+                <div
+                  v-for="network in overview.networks"
+                  :key="network.name"
+                  class="network-row"
+                >
+                  <div class="network-heading">
+                    <div>
+                      <strong>{{ network.name }}</strong>
+                      <span>{{ network.interfaceType }}</span>
+                    </div>
+                    <Tag :color="network.status === 'Up' ? 'green' : 'default'">
+                      {{ network.status }}
+                    </Tag>
+                  </div>
+                  <div class="network-address">
+                    {{ displayList(network.addresses) }}
+                  </div>
+                  <div class="network-stats">
+                    <span>
+                      {{ $t('page.monitor.speed') }}
+                      {{ formatBitRate(network.speedBitsPerSecond) }}
+                    </span>
+                    <span>
+                      {{ $t('page.monitor.received') }}
+                      {{ formatBytes(network.bytesReceived) }}
+                    </span>
+                    <span>
+                      {{ $t('page.monitor.sent') }}
+                      {{ formatBytes(network.bytesSent) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-copy">
+                {{ $t('page.monitor.noNetworks') }}
+              </div>
+            </section>
+          </div>
+
           <div class="bottom-grid">
             <section class="info-panel">
               <div class="panel-title">
-                <h3>依赖健康检查</h3>
+                <h3>{{ $t('page.monitor.dependencies') }}</h3>
               </div>
               <div class="dependency-list">
                 <div
@@ -342,25 +490,25 @@ onMounted(loadOverview);
 
             <section class="info-panel">
               <div class="panel-title">
-                <h3>最近状态</h3>
-                <span>近 24 小时</span>
+                <h3>{{ $t('page.monitor.recent') }}</h3>
+                <span>{{ $t('page.monitor.last24Hours') }}</span>
               </div>
               <table class="info-table">
                 <tbody>
                   <tr>
-                    <th>任务失败数</th>
+                    <th>{{ $t('page.monitor.failedJobs') }}</th>
                     <td>{{ overview.recent.failedScheduledJobCount }}</td>
                   </tr>
                   <tr>
-                    <th>异常操作日志</th>
+                    <th>{{ $t('page.monitor.failedAudits') }}</th>
                     <td>{{ overview.recent.failedAuditLogCount }}</td>
                   </tr>
                   <tr>
-                    <th>在线用户</th>
+                    <th>{{ $t('page.monitor.onlineUsers') }}</th>
                     <td>{{ overview.recent.onlineUserCount }}</td>
                   </tr>
                   <tr>
-                    <th>异常文件</th>
+                    <th>{{ $t('page.monitor.abnormalFiles') }}</th>
                     <td>{{ overview.recent.abnormalFileCount }}</td>
                   </tr>
                 </tbody>
@@ -474,7 +622,8 @@ onMounted(loadOverview);
 }
 
 .metric-grid,
-.bottom-grid {
+.bottom-grid,
+.telemetry-grid {
   display: grid;
   gap: 12px;
 }
@@ -485,6 +634,10 @@ onMounted(loadOverview);
 
 .bottom-grid {
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 360px);
+}
+
+.telemetry-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .info-panel {
@@ -621,6 +774,72 @@ onMounted(loadOverview);
   flex-direction: column;
 }
 
+.disk-list,
+.network-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.disk-row,
+.network-row {
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 12px 14px;
+}
+
+.disk-row:last-child,
+.network-row:last-child {
+  border-bottom: 0;
+}
+
+.disk-heading,
+.network-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.disk-heading > div,
+.network-heading > div {
+  min-width: 0;
+}
+
+.disk-heading strong,
+.network-heading strong {
+  display: block;
+  font-size: 13px;
+}
+
+.disk-heading span,
+.network-heading span,
+.network-address,
+.network-stats,
+.empty-copy {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.disk-row :deep(.ant-progress) {
+  margin-top: 8px;
+}
+
+.network-address {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.network-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 6px;
+}
+
+.empty-copy {
+  padding: 24px 14px;
+  text-align: center;
+}
+
 .dependency-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -666,7 +885,8 @@ onMounted(loadOverview);
 @media (max-width: 1200px) {
   .summary-grid,
   .metric-grid,
-  .bottom-grid {
+  .bottom-grid,
+  .telemetry-grid {
     grid-template-columns: 1fr;
   }
 

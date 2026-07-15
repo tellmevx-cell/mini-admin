@@ -1,15 +1,18 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Caching;
 using MiniAdmin.Application.Contracts.Menus;
 using MiniAdmin.Application.Contracts.MultiTenancy;
 using MiniAdmin.Domain.Entities;
+using MiniAdmin.Platform.Navigation;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
 public sealed class EfMenuRepository(
     MiniAdminDbContext dbContext,
     IUserAuthorizationCache userAuthorizationCache,
-    ICurrentTenant currentTenant) : IMenuRepository
+    ICurrentTenant currentTenant,
+    IPageRegistry pageRegistry) : IMenuRepository
 {
     public async Task<IReadOnlyList<string>> GetPermissionCodesByUserNameAsync(
         string userName,
@@ -37,6 +40,7 @@ public sealed class EfMenuRepository(
     {
         return await userAuthorizationCache.GetMenusAsync(
             userName,
+            CultureInfo.CurrentUICulture.Name,
             async token =>
             {
                 var menus = await GetAuthorizedMenusAsync(userName, token);
@@ -239,7 +243,7 @@ public sealed class EfMenuRepository(
         }
     }
 
-    private static VbenMenuDto ToVbenMenu(Menu menu, ILookup<Guid?, Menu> menuLookup)
+    private VbenMenuDto ToVbenMenu(Menu menu, ILookup<Guid?, Menu> menuLookup)
     {
         var children = menuLookup[menu.Id]
             .Select(child => ToVbenMenu(child, menuLookup))
@@ -251,14 +255,14 @@ public sealed class EfMenuRepository(
             menu.Component,
             menu.Redirect,
             new VbenMenuMetaDto(
-                menu.Title,
+                ResolveTitle(menu),
                 menu.Icon,
                 menu.Order,
                 menu.AffixTab ? true : null),
             children);
     }
 
-    private static MenuTreeNodeDto ToMenuTreeNode(Menu menu, ILookup<Guid?, Menu> menuLookup)
+    private MenuTreeNodeDto ToMenuTreeNode(Menu menu, ILookup<Guid?, Menu> menuLookup)
     {
         var children = menuLookup[menu.Id]
             .OrderBy(x => x.Order)
@@ -269,11 +273,11 @@ public sealed class EfMenuRepository(
         return new MenuTreeNodeDto(
             menu.Id.ToString(),
             menu.Name,
-            menu.Title,
+            ResolveTitle(menu),
             children);
     }
 
-    private static MenuManagementItemDto ToManagementItem(Menu menu, ILookup<Guid?, Menu> menuLookup)
+    private MenuManagementItemDto ToManagementItem(Menu menu, ILookup<Guid?, Menu> menuLookup)
     {
         var children = menuLookup[menu.Id]
             .OrderBy(x => x.Order)
@@ -288,7 +292,7 @@ public sealed class EfMenuRepository(
             menu.Path,
             menu.Component,
             menu.Redirect,
-            menu.Title,
+            ResolveTitle(menu),
             menu.Icon,
             menu.Order,
             menu.AffixTab,
@@ -296,6 +300,26 @@ public sealed class EfMenuRepository(
             menu.IsEnabled,
             menu.IsVisible,
             children);
+    }
+
+    private string ResolveTitle(Menu menu)
+    {
+        var page = pageRegistry.FindPage(menu.Name);
+        if (page is not null)
+        {
+            return page.Title.Resolve(CultureInfo.CurrentUICulture.Name);
+        }
+
+        if (!string.IsNullOrWhiteSpace(menu.PermissionCode))
+        {
+            var permission = pageRegistry.FindPermission(menu.PermissionCode);
+            if (permission is not null)
+            {
+                return permission.Title.Resolve(CultureInfo.CurrentUICulture.Name);
+            }
+        }
+
+        return menu.Title;
     }
 
     private static void ApplyRequest(Menu menu, SaveMenuRequest request)

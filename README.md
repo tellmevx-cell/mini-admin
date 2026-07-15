@@ -4,7 +4,7 @@
 
 # MiniAdmin
 
-企业级 SaaS 中后台基础平台。后端基于 .NET 10 与 ASP.NET Core，前端基于 Vue 3 与 Vben Admin，提供多租户、RBAC 权限、工作流、消息中心、审计、代码生成、事件总线、工作单元、网关和运维监控等开箱即用能力。
+企业级 SaaS 中后台基础平台。后端基于 .NET 10 与 ASP.NET Core，前端基于 Vue 3 与 Vben Admin，提供多租户、RBAC + ABAC、Dynamic API、PageRegistry、工作流、消息中心、开放平台、事件总线、工作单元、灰度网关和运维监控等开箱即用能力。
 
 [![Gitee Star](https://gitee.com/baijincom/mini-admin/badge/star.svg)](https://gitee.com/baijincom/mini-admin/stargazers)
 [![GitHub Star](https://img.shields.io/github/stars/tellmevx-cell/mini-admin?style=flat&logo=github)](https://github.com/tellmevx-cell/mini-admin)
@@ -14,11 +14,11 @@
 [![Frontend](https://img.shields.io/badge/Vue-3-42b883.svg)](frontend/vue-vben-admin)
 [![Docs](https://img.shields.io/badge/Docs-VitePress-646cff.svg)](docs-site)
 
-[功能总览](#功能概览) · [界面预览](#界面预览) · [快速开始](#快速开始) · [Docker 部署](docs-site/guide/docker-compose.md) · [二开文档](docs-site/index.md) · [参与贡献](CONTRIBUTING.md)
+[功能总览](#功能概览) · [界面预览](#界面预览) · [快速开始](#快速开始) · [单脚本服务器安装](docs-site/guide/server-install-script.md) · [Docker 部署](docs-site/guide/docker-compose.md) · [二开文档](docs-site/index.md) · [参与贡献](CONTRIBUTING.md)
 
 ## 简介
 
-MiniAdmin 采用前后端分离架构，后端按 `Domain / Application / Infrastructure / Api` 分层，前端由后端菜单动态驱动路由。项目不是只展示增删改查的示例模板，而是一套可以继续承载真实业务模块的后台基础工程。
+MiniAdmin 采用前后端分离架构，后端按 `Platform / Domain / Application / Infrastructure / Api` 分层，前端由 PageRegistry 菜单动态驱动路由。项目不是只展示增删改查的示例模板，而是一套可以继续承载真实业务模块的后台基础工程。
 
 你可以保留完整平台能力直接开发业务，也可以按需裁剪租户、工作流、消息、网关等模块。默认使用 InMemory 和 Memory Cache 即可启动体验，生产环境可切换到 MySQL 与 Redis，并通过 Docker Compose 在 Linux 或 1Panel 服务器上一键部署。
 
@@ -51,20 +51,21 @@ MiniAdmin 采用前后端分离架构，后端按 `Domain / Application / Infras
 
 ## 为什么选择 MiniAdmin
 
-- **可直接二开**：后端按 `Domain / Application / Infrastructure / Api` 分层，前端基于 Vben Admin，菜单、权限、业务模块都有清晰扩展入口。
+- **可直接二开**：后端按平台内核与业务分层，Dynamic API 消除 Controller 样板，PageRegistry 统一菜单、路由、权限和国际化。
 - **真实后台能力**：内置用户、角色、菜单、部门、岗位、字典、参数、文件、通知、审计、登录安全、在线用户和系统监控。
 - **工作流优先**：支持流程定义、审批中心、条件分支、抄送节点、审批记录、消息提醒和业务绑定。
 - **SaaS 多租户**：支持平台租户、租户套餐、租户初始化模板、租户管理员开通和租户数据隔离。
-- **代码生成器**：支持从表结构生成可运行 CRUD，并沉淀生成历史、产物治理、回滚和工作流绑定能力。
+- **代码生成器**：从表结构生成分层 CRUD、Dynamic API、PageRegistry 和前端页面，并支持产物治理、回滚和工作流绑定。
+- **开放与实时**：内置 OAuth2/OIDC、个人 OpenAPI 凭证、Scriban 多通道模板、SignalR 通知和在线聊天。
 - **工程化完整**：包含测试、文档站、运行管理、定时任务、事件总线、工作单元和本地/生产配置说明。
-- **网关可演进**：内置 `MiniAdmin.Gateway`，基于 YARP 提供统一 `/api` 入口、健康检查和入口限流，为后续微服务拆分预留边界。
+- **网关可演进**：内置 YARP 灰度、TraceId、限流和熔断，为渐进发布与后续微服务拆分预留边界。
 
 ## 技术栈
 
 | 模块 | 技术 |
 | --- | --- |
-| 后端 | .NET 10, ASP.NET Core Minimal API, EF Core |
-| 网关 | YARP Reverse Proxy, ASP.NET Core RateLimiter |
+| 后端 | .NET 10, ASP.NET Core, Dynamic API, OpenIddict, EF Core |
+| 网关 | YARP Reverse Proxy, 灰度发布, RateLimiter, Circuit Breaker |
 | 数据库 | 默认 InMemory，支持 MySQL |
 | 缓存 | Memory Cache，支持 Redis 并具备失败兜底 |
 | 前端 | Vue 3, Vben Admin, Ant Design Vue, Pinia, Vite |
@@ -95,12 +96,14 @@ Browser
 | 项目 | 职责 |
 | --- | --- |
 | `MiniAdmin.Domain.Shared` | 领域共享常量、枚举和基础约定 |
+| `MiniAdmin.Platform.Core` | Dynamic API、PageRegistry、ABAC 和缓存中立契约 |
+| `MiniAdmin.Platform.AspNetCore` | 接口发现、绑定、授权、异常边界和 OpenAPI 适配 |
 | `MiniAdmin.Domain` | 实体、领域规则、仓储抽象和领域事件 |
 | `MiniAdmin.Application.Contracts` | DTO、应用服务接口和跨层契约 |
 | `MiniAdmin.Application` | 用例编排、权限校验和事务边界 |
 | `MiniAdmin.Infrastructure` | EF Core、缓存、文件、通知、任务和数据初始化 |
-| `MiniAdmin.Api` | HTTP API、认证授权、中间件和依赖注入入口 |
-| `MiniAdmin.Gateway` | 统一 API 入口、反向代理、健康检查和限流 |
+| `MiniAdmin.Api` | HTTP API、认证授权、OIDC、SignalR、中间件和依赖注入入口 |
+| `MiniAdmin.Gateway` | 统一入口、反向代理、灰度、追踪、限流和熔断 |
 
 主要目录：
 
@@ -122,7 +125,7 @@ mini-admin/
 
 - JWT 登录、验证码、登录失败锁定、密码策略和在线会话管理。
 - 用户、角色、菜单、权限码、部门、岗位、字典、系统参数和公告管理。
-- RBAC 权限控制、数据权限、权限诊断链路和缓存刷新。
+- RBAC + ABAC、数据权限、权限诊断、授权快照和版本化缓存。
 - 审计日志、实体变更追踪、安全事件和操作日志。
 
 ### SaaS 租户
@@ -138,20 +141,21 @@ mini-admin/
 - 流程定义、流程实例、审批任务、我的待办、我的申请、我的抄送和我的已办。
 - 审批节点、条件节点、抄送节点、结束节点和可视化流程画布。
 - 审批附件、评论、催办、撤回、版本发布和业务表单绑定。
-- 消息通知中心、已读/未读追踪、模板中心、通知策略和投递重试。
+- Scriban 消息模板、站内信/邮件/短信/Webhook、已读追踪、SignalR 通知和在线聊天。
 
 ### 运维与平台能力
 
-- 文件上传、下载、异常文件标记和存储一致性检查。
+- 文件上传、下载、异常文件标记，以及 Local/S3/OSS/COS/MinIO 多存储。
 - 定时任务、任务日志、系统监控看板和告警中心。
 - 项目运行管理，可在管理端查看服务、日志、构建和产物。
 - 本地事件总线和工作单元，便于扩展领域事件和事务边界。
-- MiniAdmin.Gateway 网关，支持 `/api` 统一代理、网关健康检查和入口限流。
+- MiniAdmin.Gateway 支持灰度发布、TraceId、限流、熔断和 OIDC 协议代理。
+- OAuth2/OIDC 第三方应用、用户授权同意和个人 AppKey/AppSecret 签名调用。
 
 ### 代码生成与二开
 
 - 表结构读取、字段选择、查询条件、控件类型和字典绑定。
-- 生成前预览、生成后安装、生成历史、产物治理和回滚。
+- 生成前预览、生成后安装、Dynamic API、PageRegistry、生成历史、产物治理和回滚。
 - 支持生成业务模块，并可绑定工作流审批。
 
 ## 功能截图展示
@@ -246,6 +250,15 @@ Linux / 1Panel 服务器推荐直接执行：
 ```bash
 bash deploy.sh
 ```
+
+如果服务器还没有项目代码，只需先上传仓库根目录的 `mini-admin-server-install.sh`：
+
+```bash
+chmod +x mini-admin-server-install.sh
+bash mini-admin-server-install.sh
+```
+
+它会默认从 Gitee `main` 分支安装到 `/opt/mini-admin`，后续再次执行即可安全更新。域名和 1Panel 配置见[单脚本服务器安装](docs-site/guide/server-install-script.md)。
 
 脚本会自动生成生产 `.env`、按顺序构建并启动 MySQL、Redis、API、Gateway、Web，等待数据库初始化完成，并验证整条 `/api` 代理链路。失败时会直接显示对应容器日志。
 

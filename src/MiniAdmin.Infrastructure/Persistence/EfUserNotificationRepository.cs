@@ -4,7 +4,9 @@ using MiniAdmin.Domain.Entities;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
-public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) : IUserNotificationRepository
+public sealed class EfUserNotificationRepository(
+    MiniAdminDbContext dbContext,
+    IRealtimeNotificationPublisher realtimePublisher) : IUserNotificationRepository
 {
     public async Task<UserNotificationListResult> GetListAsync(
         Guid userId,
@@ -89,7 +91,7 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
             .Where(userId => userId != Guid.Empty)
             .Distinct()
             .ToArray();
-        var created = 0;
+        var createdNotifications = new List<UserNotification>();
         foreach (var userId in normalizedUserIds)
         {
             foreach (var request in requests)
@@ -105,7 +107,7 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
                     continue;
                 }
 
-                dbContext.UserNotifications.Add(new UserNotification
+                var notification = new UserNotification
                 {
                     Id = Guid.NewGuid(),
                     UserId = userId,
@@ -118,17 +120,31 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
                     SourceId = request.SourceId.Trim(),
                     IsRead = false,
                     CreatedAt = now
-                });
-                created++;
+                };
+                dbContext.UserNotifications.Add(notification);
+                createdNotifications.Add(notification);
             }
         }
 
-        if (created > 0)
+        if (createdNotifications.Count > 0)
         {
             await dbContext.SaveChangesAsync(cancellationToken);
+            foreach (var userGroup in createdNotifications.GroupBy(notification => notification.UserId))
+            {
+                var unreadCount = await dbContext.UserNotifications
+                    .AsNoTracking()
+                    .CountAsync(notification =>
+                        notification.UserId == userGroup.Key && !notification.IsRead,
+                        cancellationToken);
+                await realtimePublisher.PublishCreatedAsync(
+                    userGroup.Key,
+                    userGroup.Select(ToDto).ToArray(),
+                    unreadCount,
+                    cancellationToken);
+            }
         }
 
-        return created;
+        return createdNotifications.Count;
     }
 
     public async Task<bool> MarkReadAsync(
@@ -149,6 +165,7 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
             notification.IsRead = true;
             notification.ReadAt = DateTimeOffset.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
+            await PublishUnreadCountAsync(userId, cancellationToken);
         }
 
         return true;
@@ -169,6 +186,7 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await realtimePublisher.PublishUnreadCountAsync(userId, 0, cancellationToken);
         return unreadNotifications.Length;
     }
 
@@ -187,6 +205,7 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
 
         dbContext.UserNotifications.Remove(notification);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await PublishUnreadCountAsync(userId, cancellationToken);
         return true;
     }
 
@@ -199,6 +218,7 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
             .ToArrayAsync(cancellationToken);
         dbContext.UserNotifications.RemoveRange(notifications);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await realtimePublisher.PublishUnreadCountAsync(userId, 0, cancellationToken);
         return notifications.Length;
     }
 
@@ -216,5 +236,15 @@ public sealed class EfUserNotificationRepository(MiniAdminDbContext dbContext) :
             notification.IsRead,
             notification.CreatedAt,
             notification.ReadAt);
+    }
+
+    private async Task PublishUnreadCountAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var unreadCount = await dbContext.UserNotifications
+            .AsNoTracking()
+            .CountAsync(notification => notification.UserId == userId && !notification.IsRead, cancellationToken);
+        await realtimePublisher.PublishUnreadCountAsync(userId, unreadCount, cancellationToken);
     }
 }

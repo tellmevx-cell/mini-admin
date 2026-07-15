@@ -21,12 +21,14 @@
 1. 新增实体。
 2. 新增 DTO 和请求对象。
 3. 新增应用服务接口。
-4. 实现应用服务。
+4. 实现带 `[DynamicApi]` 和方法元数据的应用服务。
 5. 注册依赖注入。
-6. 新增 Minimal API 端点。
-7. 增加权限编码。
-8. 增加菜单和权限种子。
+6. 仅在文件上传、下载等场景增加薄传输端点。
+7. 在 `PageDefinitionProvider` 注册路由、组件、标题和权限。
+8. 确认 RBAC 权限码与 ABAC 资源动作一致。
 9. 增加测试。
+
+完整示例见 [Dynamic API 与 PageRegistry](./dynamic-api-page-registry.md)。代码生成器已经按这套约定生成，不再生成标准 CRUD Controller 或菜单种子。
 
 ## 3. 前端实现
 

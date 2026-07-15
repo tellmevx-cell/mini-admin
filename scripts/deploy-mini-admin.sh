@@ -40,6 +40,7 @@ MiniAdmin Docker Compose 一键部署脚本
   MINIADMIN_WEB_PORT=5666
   MINIADMIN_HTTP_PORT=127.0.0.1:8080
   MINIADMIN_GATEWAY_PORT=127.0.0.1:8088
+  MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/
   MINIADMIN_BUILD_RETRIES=2
 
 示例：
@@ -195,11 +196,20 @@ write_env_file() {
   local api_bind="${MINIADMIN_HTTP_PORT:-$DEFAULT_API_BIND}"
   local gateway_bind="${MINIADMIN_GATEWAY_PORT:-$DEFAULT_GATEWAY_BIND}"
   local jwt_key mysql_password mysql_root_password redis_password
+  local public_origin public_port server_ip allow_insecure_http
 
   jwt_key="$(random_hex 40)"
   mysql_password="$(random_hex 24)"
   mysql_root_password="$(random_hex 24)"
   redis_password="$(random_hex 24)"
+  public_port="$(binding_port "$web_port")"
+  server_ip="$(detect_server_ip)"
+  public_origin="${MINIADMIN_PUBLIC_ORIGIN:-http://${server_ip}:${public_port}/}"
+  public_origin="${public_origin%/}/"
+  allow_insecure_http="${MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP:-false}"
+  if [[ "$public_origin" == http://* ]]; then
+    allow_insecure_http="true"
+  fi
 
   cat > "$ENV_FILE" <<EOF
 MINIADMIN_HTTP_PORT=${api_bind}
@@ -218,6 +228,12 @@ MINIADMIN_GATEWAY_RATE_LIMITING_PERMIT_LIMIT=${MINIADMIN_GATEWAY_RATE_LIMITING_P
 MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS=${MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS:-60}
 MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT=${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT:-20}
 MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS=${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS:-60}
+MINIADMIN_GATEWAY_CANARY_ENABLED=${MINIADMIN_GATEWAY_CANARY_ENABLED:-false}
+MINIADMIN_GATEWAY_CANARY_PERCENTAGE=${MINIADMIN_GATEWAY_CANARY_PERCENTAGE:-0}
+MINIADMIN_CANARY_API_ADDRESS=${MINIADMIN_CANARY_API_ADDRESS:-http://api:8080/}
+MINIADMIN_GATEWAY_CIRCUIT_BREAKER_ENABLED=${MINIADMIN_GATEWAY_CIRCUIT_BREAKER_ENABLED:-true}
+MINIADMIN_GATEWAY_CIRCUIT_BREAKER_FAILURE_THRESHOLD=${MINIADMIN_GATEWAY_CIRCUIT_BREAKER_FAILURE_THRESHOLD:-5}
+MINIADMIN_GATEWAY_CIRCUIT_BREAKER_BREAK_SECONDS=${MINIADMIN_GATEWAY_CIRCUIT_BREAKER_BREAK_SECONDS:-30}
 
 MINIADMIN_NPM_REGISTRY=${MINIADMIN_NPM_REGISTRY:-https://registry.npmmirror.com}
 MINIADMIN_PNPM_FETCH_TIMEOUT=${MINIADMIN_PNPM_FETCH_TIMEOUT:-900000}
@@ -225,6 +241,9 @@ MINIADMIN_PNPM_FETCH_RETRIES=${MINIADMIN_PNPM_FETCH_RETRIES:-8}
 MINIADMIN_PNPM_NETWORK_CONCURRENCY=${MINIADMIN_PNPM_NETWORK_CONCURRENCY:-2}
 
 MINIADMIN_JWT_SIGNING_KEY=${jwt_key}
+MINIADMIN_PUBLIC_ORIGIN=${public_origin}
+MINIADMIN_OPEN_PLATFORM_ISSUER=${MINIADMIN_OPEN_PLATFORM_ISSUER:-$public_origin}
+MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=${allow_insecure_http}
 
 MINIADMIN_MYSQL_DATABASE=mini_admin
 MINIADMIN_MYSQL_USER=miniadmin
@@ -519,10 +538,11 @@ verify_stack() {
   CURRENT_SERVICE="web"
   wait_for_http "http://${web_host}:${web_port}/" "前端页面"
   wait_for_http "http://${web_host}:${web_port}/api/health" "前端到网关到 API 链路"
+  wait_for_http "http://${web_host}:${web_port}/.well-known/openid-configuration" "OIDC 发现文档"
 }
 
 print_summary() {
-  local web_bind web_bind_host web_port server_ip visit_host
+  local web_bind web_bind_host web_port server_ip visit_host issuer
   web_bind="$(load_env_value MINIADMIN_WEB_PORT "$DEFAULT_WEB_PORT")"
   web_port="$(binding_port "$web_bind")"
   server_ip="$(detect_server_ip)"
@@ -534,6 +554,7 @@ print_summary() {
       *) visit_host="$web_bind_host" ;;
     esac
   fi
+  issuer="$(load_env_value MINIADMIN_OPEN_PLATFORM_ISSUER "http://${visit_host}:${web_port}/")"
 
   cat <<EOF
 
@@ -542,6 +563,7 @@ MiniAdmin 部署成功。
 访问地址：
   Web:            http://${visit_host}:${web_port}
   1Panel 反向代理: http://127.0.0.1:${web_port}
+  OIDC Issuer:    ${issuer}
 
 默认账号：
   平台管理员：租户留空，用户名 admin，密码 123456

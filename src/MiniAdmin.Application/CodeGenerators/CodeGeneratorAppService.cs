@@ -17,8 +17,8 @@ public sealed class CodeGeneratorAppService(
     private static readonly Regex EntityConfigurationMappingRegex = new(
         "class\\s+(?<module>[A-Za-z][A-Za-z0-9]*)EntityTypeConfiguration[\\s\\S]*?\\.ToTable\\(\"(?<table>[^\"]+)\"\\)",
         RegexOptions.Compiled);
-    private static readonly Regex GeneratedMenuPathRegex = new("Path\\s*=\\s*\"(?<path>[^\"]+)\"", RegexOptions.Compiled);
-    private static readonly Regex GeneratedMenuComponentRegex = new("Component\\s*=\\s*\"(?<component>[^\"]+)\"", RegexOptions.Compiled);
+    private static readonly Regex GeneratedPagePathRegex = new("Path\\s*[:=]\\s*\"(?<path>[^\"]+)\"", RegexOptions.Compiled);
+    private static readonly Regex GeneratedPageComponentRegex = new("Component\\s*[:=]\\s*\"(?<component>[^\"]+)\"", RegexOptions.Compiled);
     private static readonly Regex SafeModuleNameRegex = new("^[A-Za-z][A-Za-z0-9]*$", RegexOptions.Compiled);
 
     private static readonly string[] AllowedRoots =
@@ -712,10 +712,14 @@ public sealed class CodeGeneratorAppService(
         string moduleKind)
     {
         var pluralModuleName = CodeGeneratorTemplateRenderer.ToPlural(moduleName);
-        var generatedMenuSeedPath = ToFullPath(
+        var pageDefinitionPath = ToFullPath(
+            workspaceRoot,
+            $"src/MiniAdmin.Application/{pluralModuleName}/{moduleName}PageDefinitionProvider.cs");
+        var legacyMenuSeedPath = ToFullPath(
             workspaceRoot,
             $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}MenuSeed.cs");
-        var (routePath, component) = ReadGeneratedMenuRoute(generatedMenuSeedPath);
+        var metadataPath = File.Exists(pageDefinitionPath) ? pageDefinitionPath : legacyMenuSeedPath;
+        var (routePath, component) = ReadGeneratedPageRoute(metadataPath);
         var files = BuildExistingModuleFiles(workspaceRoot, moduleName, pluralModuleName, routePath, component);
 
         return new CodeGeneratorExistingModuleDto(
@@ -727,16 +731,16 @@ public sealed class CodeGeneratorAppService(
             files);
     }
 
-    private static (string? RoutePath, string? Component) ReadGeneratedMenuRoute(string generatedMenuSeedPath)
+    private static (string? RoutePath, string? Component) ReadGeneratedPageRoute(string metadataPath)
     {
-        if (!File.Exists(generatedMenuSeedPath))
+        if (!File.Exists(metadataPath))
         {
             return (null, null);
         }
 
-        var content = File.ReadAllText(generatedMenuSeedPath);
-        var path = GeneratedMenuPathRegex.Match(content).Groups["path"].Value;
-        var component = GeneratedMenuComponentRegex.Match(content).Groups["component"].Value;
+        var content = File.ReadAllText(metadataPath);
+        var path = GeneratedPagePathRegex.Match(content).Groups["path"].Value;
+        var component = GeneratedPageComponentRegex.Match(content).Groups["component"].Value;
         return (
             string.IsNullOrWhiteSpace(path) ? null : path,
             string.IsNullOrWhiteSpace(component) ? null : component);
@@ -761,10 +765,12 @@ public sealed class CodeGeneratorAppService(
             $"src/MiniAdmin.Application.Contracts/{pluralModuleName}/I{moduleName}AppService.cs",
             $"src/MiniAdmin.Application.Contracts/{pluralModuleName}/{moduleName}Dtos.cs",
             $"src/MiniAdmin.Application/{pluralModuleName}/{moduleName}AppService.cs",
+            $"src/MiniAdmin.Application/{pluralModuleName}/{moduleName}PageDefinitionProvider.cs",
             $"src/MiniAdmin.Infrastructure/Persistence/Ef{moduleName}Repository.cs",
             $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}EntityTypeConfiguration.cs",
             $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}MenuSeed.cs",
             $"src/MiniAdmin.Api/Generated/{moduleName}Endpoints.cs",
+            $"src/MiniAdmin.Api/Generated/{moduleName}TransportEndpoints.cs",
             $"frontend/vue-vben-admin/apps/web-antd/src/api/{apiSegment}.ts",
             component is null
                 ? $"frontend/vue-vben-admin/apps/web-antd/src/views/business/{routeSegment}/index.vue"

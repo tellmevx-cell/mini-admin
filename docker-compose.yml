@@ -69,6 +69,9 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
       Jwt__SigningKey: ${MINIADMIN_JWT_SIGNING_KEY:?Set MINIADMIN_JWT_SIGNING_KEY in .env}
+      OpenPlatform__Issuer: ${MINIADMIN_OPEN_PLATFORM_ISSUER:-http://localhost:5666/}
+      OpenPlatform__AllowInsecureHttp: "${MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP:-false}"
+      OpenPlatform__SigningCertificate__AutoGeneratePath: /app/storage/uploads/.system/openplatform-signing.pfx
       Database__Provider: MySql
       Database__InitializeOnStartup: "true"
       Database__SchemaManagement: Auto
@@ -112,12 +115,18 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
-      ReverseProxy__Clusters__miniadmin_api__Destinations__api__Address: http://api:8080/
+      ReverseProxy__Clusters__miniadmin_api__Destinations__stable__Address: http://api:8080/
+      ReverseProxy__Clusters__miniadmin_api__Destinations__canary__Address: ${MINIADMIN_CANARY_API_ADDRESS:-http://api:8080/}
       RateLimiting__Enabled: "${MINIADMIN_GATEWAY_RATE_LIMITING_ENABLED:-true}"
       RateLimiting__PermitLimit: "${MINIADMIN_GATEWAY_RATE_LIMITING_PERMIT_LIMIT:-1200}"
       RateLimiting__WindowSeconds: "${MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS:-60}"
       RateLimiting__LoginPermitLimit: "${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT:-20}"
       RateLimiting__LoginWindowSeconds: "${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS:-60}"
+      Canary__Enabled: "${MINIADMIN_GATEWAY_CANARY_ENABLED:-false}"
+      Canary__Percentage: "${MINIADMIN_GATEWAY_CANARY_PERCENTAGE:-0}"
+      CircuitBreaker__Enabled: "${MINIADMIN_GATEWAY_CIRCUIT_BREAKER_ENABLED:-true}"
+      CircuitBreaker__FailureThreshold: "${MINIADMIN_GATEWAY_CIRCUIT_BREAKER_FAILURE_THRESHOLD:-5}"
+      CircuitBreaker__BreakDurationSeconds: "${MINIADMIN_GATEWAY_CIRCUIT_BREAKER_BREAK_SECONDS:-30}"
     ports:
       - "${MINIADMIN_GATEWAY_PORT:-127.0.0.1:8088}:8080"
     networks:

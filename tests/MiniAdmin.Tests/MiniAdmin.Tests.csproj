@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MiniAdmin.Api\MiniAdmin.Api.csproj" />
+    <ProjectReference Include="..\..\src\MiniAdmin.Gateway\MiniAdmin.Gateway.csproj" />
   </ItemGroup>
 
 </Project>

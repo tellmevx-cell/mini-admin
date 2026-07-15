@@ -33,6 +33,7 @@ export default defineConfig({
           items: [
             { text: '项目介绍', link: '/guide/introduction' },
             { text: '快速开始', link: '/guide/quick-start' },
+            { text: '单脚本服务器安装', link: '/guide/server-install-script' },
             { text: '一键部署', link: '/guide/docker-compose#一键部署脚本' },
             { text: 'Docker Compose', link: '/guide/docker-compose' },
             { text: '网关与微服务', link: '/guide/gateway-microservices' },
@@ -47,6 +48,8 @@ export default defineConfig({
           items: [
             { text: '能力总览', link: '/features/overview' },
             { text: '功能截图展示', link: '/features/showcase' },
+            { text: '平台内核', link: '/features/platform-kernel' },
+            { text: '开放平台', link: '/features/open-platform' },
             { text: '认证与 RBAC', link: '/features/auth-rbac' },
             { text: 'SaaS 租户', link: '/features/tenant' },
             { text: '工作流审批', link: '/features/workflow' },
@@ -66,6 +69,7 @@ export default defineConfig({
             { text: '前端开发', link: '/developer/frontend' },
             { text: '数据库与迁移', link: '/developer/database' },
             { text: '事件总线与工作单元', link: '/developer/event-bus-unit-of-work' },
+            { text: 'Dynamic API 与 PageRegistry', link: '/developer/dynamic-api-page-registry' },
             { text: '新增模块流程', link: '/developer/add-module' },
             { text: '开发约定', link: '/developer/conventions' },
           ],

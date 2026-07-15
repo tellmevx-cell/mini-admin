@@ -8,8 +8,8 @@
 2. 在 Application.Contracts 定义 DTO、请求对象和接口。
 3. 在 Application 实现应用服务。
 4. 在 Infrastructure 实现仓储、存储或外部服务。
-5. 在 Api 注册服务和端点。
-6. 增加菜单、权限和种子数据。
+5. 用 Dynamic API 元数据暴露标准接口；仅为文件流增加传输端点。
+6. 用 PageRegistry 注册页面、路由、组件、权限和国际化。
 7. 增加测试。
 
 ## DTO 和请求对象
@@ -39,21 +39,23 @@ src/MiniAdmin.Application.Contracts
 - 返回 DTO，不返回实体。
 - 复杂逻辑拆成私有方法或独立服务。
 
-## Minimal API
+## Dynamic API
 
-API 层负责：
+应用服务使用 `[DynamicApi]` 和 `[DynamicGet/Post/Put/Delete]` 声明：
 
 - 路由定义。
-- 认证授权。
-- 参数绑定。
-- 调用应用服务。
-- 包装响应。
+- HTTP 方法与参数绑定。
+- RBAC 权限码。
+- ABAC 资源和动作。
+- OpenAPI OperationId 与说明。
 
-API 层不应该承载复杂业务逻辑。
+框架在启动时发现并生成 API 与 Scalar 文档。上传、下载等需要 `IFormFile`、流或 `Results.File` 的场景保留薄传输端点，传输层不承载业务逻辑。
 
 ## 统一响应
 
-接口通常返回 `ApiResponse<T>`，便于前端统一处理成功、失败和消息。
+Dynamic API 直接返回 DTO JSON，前端使用 `responseReturn: 'body'`。历史传输端点仍可返回 `ApiResponse<T>`；新增模块不要混用两种契约。业务校验异常统一映射为 `400`，资源不存在为 `404`，越权为 `403`。
+
+完整示例见 [Dynamic API 与 PageRegistry](./dynamic-api-page-registry.md)。
 
 ## 测试建议
 

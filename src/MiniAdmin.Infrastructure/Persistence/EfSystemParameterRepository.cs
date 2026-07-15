@@ -2,10 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.Parameters;
 using MiniAdmin.Domain.Entities;
+using MiniAdmin.Platform.Caching;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
-public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : ISystemParameterRepository
+public sealed class EfSystemParameterRepository(
+    MiniAdminDbContext dbContext,
+    IPlatformCache platformCache) : ISystemParameterRepository
 {
     public async Task<PageResult<SystemParameterDto>> GetListAsync(
         SystemParameterListQuery query,
@@ -46,11 +49,18 @@ public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : 
         string key,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.SystemParameters
-            .AsNoTracking()
-            .Where(parameter => parameter.Key == key && parameter.IsEnabled)
-            .Select(parameter => parameter.Value)
-            .SingleOrDefaultAsync(cancellationToken);
+        var normalizedKey = key.Trim();
+        return await platformCache.GetOrCreateAsync(
+            "system-parameters",
+            normalizedKey,
+            tenantId: null,
+            [ParameterTag(normalizedKey)],
+            async token => await dbContext.SystemParameters
+                .AsNoTracking()
+                .Where(parameter => parameter.Key == normalizedKey && parameter.IsEnabled)
+                .Select(parameter => parameter.Value)
+                .SingleOrDefaultAsync(token),
+            cancellationToken: cancellationToken);
     }
 
     public async Task<SystemParameterDto> UpsertValueByKeyAsync(
@@ -84,6 +94,7 @@ public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : 
         parameter.IsEnabled = isEnabled;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateParameterAsync(normalizedKey, cancellationToken);
 
         return ToDto(parameter);
     }
@@ -100,6 +111,7 @@ public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : 
         ApplyRequest(parameter, request);
         dbContext.SystemParameters.Add(parameter);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateParameterAsync(parameter.Key, cancellationToken);
 
         return ToDto(parameter);
     }
@@ -115,8 +127,14 @@ public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : 
             return null;
         }
 
+        var previousKey = parameter.Key;
         ApplyRequest(parameter, request);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateParameterAsync(previousKey, cancellationToken);
+        if (!previousKey.Equals(parameter.Key, StringComparison.OrdinalIgnoreCase))
+        {
+            await InvalidateParameterAsync(parameter.Key, cancellationToken);
+        }
 
         return ToDto(parameter);
     }
@@ -129,8 +147,10 @@ public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : 
             return false;
         }
 
+        var parameterKey = parameter.Key;
         dbContext.SystemParameters.Remove(parameter);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateParameterAsync(parameterKey, cancellationToken);
 
         return true;
     }
@@ -163,4 +183,15 @@ public sealed class EfSystemParameterRepository(MiniAdminDbContext dbContext) : 
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
+
+    private Task InvalidateParameterAsync(string key, CancellationToken cancellationToken)
+    {
+        return platformCache.InvalidateTagsAsync(
+            tenantId: null,
+            [ParameterTag(key)],
+            cancellationToken);
+    }
+
+    private static string ParameterTag(string key) =>
+        $"system-parameter:{key.Trim().ToLowerInvariant()}";
 }

@@ -9,7 +9,10 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.8" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
+    <PackageReference Include="Microsoft.OpenApi" Version="2.10.0" />
+    <PackageReference Include="OpenIddict.AspNetCore" Version="7.1.0" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.16.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -18,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MiniAdmin.Application\MiniAdmin.Application.csproj" />
     <ProjectReference Include="..\MiniAdmin.Infrastructure\MiniAdmin.Infrastructure.csproj" />
+    <ProjectReference Include="..\MiniAdmin.Platform.AspNetCore\MiniAdmin.Platform.AspNetCore.csproj" />
     <ProjectReference Include="..\MiniAdmin.Shared\MiniAdmin.Shared.csproj" />
   </ItemGroup>
 

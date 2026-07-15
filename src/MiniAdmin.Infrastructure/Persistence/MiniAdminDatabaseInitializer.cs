@@ -1,6 +1,5 @@
 using System.Data;
 using System.Data.Common;
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -8,6 +7,8 @@ using MiniAdmin.Application.Contracts.Auth;
 using MiniAdmin.Application.Contracts.Caching;
 using MiniAdmin.Domain.Entities;
 using MiniAdmin.Domain.Shared.MultiTenancy;
+using MiniAdmin.Infrastructure.Navigation;
+using MiniAdmin.Infrastructure.OpenPlatform;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
@@ -15,6 +16,8 @@ public sealed class MiniAdminDatabaseInitializer(
     MiniAdminDbContext dbContext,
     IPasswordService passwordService,
     IUserAuthorizationCache userAuthorizationCache,
+    IPageRegistryMenuSynchronizer pageRegistryMenuSynchronizer,
+    IOpenPlatformDatabaseInitializer openPlatformDatabaseInitializer,
     IOptions<DatabaseOptions> databaseOptions) : IMiniAdminDatabaseInitializer
 {
     private const string InitialCreateMigrationId = "20260528021515_InitialCreate";
@@ -73,6 +76,7 @@ public sealed class MiniAdminDatabaseInitializer(
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
+        await openPlatformDatabaseInitializer.InitializeAsync(cancellationToken);
         await InitializeSchemaAsync(cancellationToken);
         await CleanupExpiredAuditLogsAsync(cancellationToken);
         await ApplySeedVersionAsync(
@@ -209,7 +213,7 @@ public sealed class MiniAdminDatabaseInitializer(
             AppBrandingWatermarkSeedName,
             SeedAppBrandingWatermarkAsync,
             cancellationToken);
-        await SeedGeneratedCrudModulesAsync(cancellationToken);
+        await pageRegistryMenuSynchronizer.SynchronizeAsync(cancellationToken);
         await EnsureUsersAsync(cancellationToken);
         await EnsureAllUsersHaveSecurityStampAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -229,6 +233,7 @@ public sealed class MiniAdminDatabaseInitializer(
             await AdoptExistingMySqlDatabaseAsync(cancellationToken);
             await dbContext.Database.MigrateAsync(cancellationToken);
             await EnsureTenantTablesAsync(cancellationToken);
+            await EnsureAbacPolicyTableAsync(cancellationToken);
             await EnsureTenantInitializationColumnsAsync(cancellationToken);
             await EnsureUserTenantColumnAsync(cancellationToken);
             await EnsureTenantScopedCoreColumnsAsync(cancellationToken);
@@ -239,6 +244,8 @@ public sealed class MiniAdminDatabaseInitializer(
             await EnsureNotificationTemplateTableAsync(cancellationToken);
             await EnsureNotificationPolicyTableAsync(cancellationToken);
             await EnsureNotificationSubscriptionTableAsync(cancellationToken);
+            await EnsureChatTablesAsync(cancellationToken);
+            await EnsureOpenApiCredentialTablesAsync(cancellationToken);
             await EnsureWorkflowTablesAsync(cancellationToken);
             await EnsureGeneratedCustomerTableAsync(cancellationToken);
             await EnsureGeneratedSampleOrderTableAsync(cancellationToken);
@@ -252,6 +259,7 @@ public sealed class MiniAdminDatabaseInitializer(
     private async Task EnsureLegacyMySqlSchemaAsync(CancellationToken cancellationToken)
     {
         await EnsureTenantTablesAsync(cancellationToken);
+        await EnsureAbacPolicyTableAsync(cancellationToken);
         await EnsureTenantInitializationColumnsAsync(cancellationToken);
         await EnsureDepartmentTableAsync(cancellationToken);
         await EnsurePositionTableAsync(cancellationToken);
@@ -273,6 +281,8 @@ public sealed class MiniAdminDatabaseInitializer(
         await EnsureNotificationTemplateTableAsync(cancellationToken);
         await EnsureNotificationPolicyTableAsync(cancellationToken);
         await EnsureNotificationSubscriptionTableAsync(cancellationToken);
+        await EnsureChatTablesAsync(cancellationToken);
+        await EnsureOpenApiCredentialTablesAsync(cancellationToken);
         await EnsureSecurityEventTableAsync(cancellationToken);
         await EnsureCodeGenerationHistoryTableAsync(cancellationToken);
         await EnsureWorkflowTablesAsync(cancellationToken);
@@ -1873,23 +1883,6 @@ public sealed class MiniAdminDatabaseInitializer(
         await EnsureRoleMenuAsync(MiniAdminSeedIds.WorkflowDefinitionManagePermissionId, cancellationToken);
         await EnsureRoleMenuAsync(MiniAdminSeedIds.WorkflowInstanceStartPermissionId, cancellationToken);
         await EnsureRoleMenuAsync(MiniAdminSeedIds.WorkflowTaskApprovePermissionId, cancellationToken);
-    }
-
-    private async Task SeedGeneratedCrudModulesAsync(CancellationToken cancellationToken)
-    {
-        var seedDefinitions = Assembly.GetExecutingAssembly()
-            .GetTypes()
-            .Where(type =>
-                !type.IsAbstract &&
-                typeof(IGeneratedCrudSeedDefinition).IsAssignableFrom(type))
-            .OrderBy(type => type.FullName, StringComparer.Ordinal)
-            .Select(type => (IGeneratedCrudSeedDefinition)Activator.CreateInstance(type)!)
-            .ToArray();
-
-        foreach (var seedDefinition in seedDefinitions)
-        {
-            await seedDefinition.SeedAsync(dbContext, cancellationToken);
-        }
     }
 
     private bool ShouldUseMigrations()
@@ -3609,6 +3602,147 @@ public sealed class MiniAdminDatabaseInitializer(
             cancellationToken);
     }
 
+    private async Task EnsureAbacPolicyTableAsync(CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_abac_policies` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NULL,
+              `Name` varchar(128) CHARACTER SET utf8mb4 NOT NULL,
+              `SubjectType` varchar(16) CHARACTER SET utf8mb4 NOT NULL,
+              `SubjectId` varchar(128) CHARACTER SET utf8mb4 NULL,
+              `Resource` varchar(128) CHARACTER SET utf8mb4 NOT NULL,
+              `Action` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
+              `Effect` varchar(16) CHARACTER SET utf8mb4 NOT NULL,
+              `ConditionsJson` longtext CHARACTER SET utf8mb4 NOT NULL,
+              `Priority` int NOT NULL,
+              `IsEnabled` tinyint(1) NOT NULL,
+              `Description` varchar(512) CHARACTER SET utf8mb4 NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              `UpdatedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              KEY `IX_abac_tenant_resource_action` (`TenantId`, `Resource`, `Action`, `IsEnabled`),
+              KEY `IX_abac_subject` (`SubjectType`, `SubjectId`),
+              CONSTRAINT `FK_abac_tenant`
+                FOREIGN KEY (`TenantId`) REFERENCES `mini_tenants` (`Id`) ON DELETE CASCADE
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+    }
+
+    private async Task EnsureChatTablesAsync(CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_chat_conversations` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NULL,
+              `TenantScopeKey` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
+              `ParticipantOneId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `ParticipantTwoId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              `UpdatedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              UNIQUE KEY `IX_chat_scope_participants` (`TenantScopeKey`, `ParticipantOneId`, `ParticipantTwoId`),
+              KEY `IX_mini_chat_conversations_UpdatedAt` (`UpdatedAt`),
+              KEY `IX_mini_chat_conversations_TenantId` (`TenantId`),
+              CONSTRAINT `FK_chat_conversations_tenant`
+                FOREIGN KEY (`TenantId`) REFERENCES `mini_tenants` (`Id`) ON DELETE CASCADE,
+              CONSTRAINT `FK_chat_conversations_user_one`
+                FOREIGN KEY (`ParticipantOneId`) REFERENCES `mini_users` (`Id`) ON DELETE RESTRICT,
+              CONSTRAINT `FK_chat_conversations_user_two`
+                FOREIGN KEY (`ParticipantTwoId`) REFERENCES `mini_users` (`Id`) ON DELETE RESTRICT
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_chat_messages` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `ConversationId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `SenderId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `ReceiverId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `Content` varchar(2000) CHARACTER SET utf8mb4 NOT NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              `ReadAt` datetime(6) NULL,
+              PRIMARY KEY (`Id`),
+              KEY `IX_chat_messages_conversation_created` (`ConversationId`, `CreatedAt`),
+              KEY `IX_chat_messages_receiver_read` (`ReceiverId`, `ReadAt`),
+              CONSTRAINT `FK_chat_messages_conversation`
+                FOREIGN KEY (`ConversationId`) REFERENCES `mini_chat_conversations` (`Id`) ON DELETE CASCADE,
+              CONSTRAINT `FK_chat_messages_sender`
+                FOREIGN KEY (`SenderId`) REFERENCES `mini_users` (`Id`) ON DELETE RESTRICT,
+              CONSTRAINT `FK_chat_messages_receiver`
+                FOREIGN KEY (`ReceiverId`) REFERENCES `mini_users` (`Id`) ON DELETE RESTRICT
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+    }
+
+    private async Task EnsureOpenApiCredentialTablesAsync(CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_openapi_credentials` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NULL,
+              `Name` varchar(128) CHARACTER SET utf8mb4 NOT NULL,
+              `AppKey` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
+              `SecretCiphertext` varchar(1024) CHARACTER SET utf8mb4 NOT NULL,
+              `PermissionsJson` longtext CHARACTER SET utf8mb4 NOT NULL,
+              `IsEnabled` tinyint(1) NOT NULL,
+              `ExpiresAt` datetime(6) NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              `UpdatedAt` datetime(6) NOT NULL,
+              `LastUsedAt` datetime(6) NULL,
+              PRIMARY KEY (`Id`),
+              UNIQUE KEY `IX_mini_openapi_credentials_AppKey` (`AppKey`),
+              KEY `IX_openapi_credentials_user_enabled` (`UserId`, `IsEnabled`),
+              KEY `IX_mini_openapi_credentials_TenantId` (`TenantId`),
+              CONSTRAINT `FK_openapi_credentials_user`
+                FOREIGN KEY (`UserId`) REFERENCES `mini_users` (`Id`) ON DELETE CASCADE,
+              CONSTRAINT `FK_openapi_credentials_tenant`
+                FOREIGN KEY (`TenantId`) REFERENCES `mini_tenants` (`Id`) ON DELETE CASCADE
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_openapi_nonces` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `CredentialId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `Nonce` varchar(128) CHARACTER SET utf8mb4 NOT NULL,
+              `ExpiresAt` datetime(6) NOT NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              UNIQUE KEY `IX_openapi_nonces_credential_nonce` (`CredentialId`, `Nonce`),
+              KEY `IX_mini_openapi_nonces_ExpiresAt` (`ExpiresAt`),
+              CONSTRAINT `FK_openapi_nonces_credential`
+                FOREIGN KEY (`CredentialId`) REFERENCES `mini_openapi_credentials` (`Id`) ON DELETE CASCADE
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+    }
+
     private async Task EnsureNotificationTemplateTableAsync(CancellationToken cancellationToken)
     {
         if (!IsMySqlProvider())
@@ -3620,6 +3754,7 @@ public sealed class MiniAdminDatabaseInitializer(
             """
             CREATE TABLE IF NOT EXISTS `mini_notification_templates` (
               `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NULL,
               `Code` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
               `Name` varchar(128) CHARACTER SET utf8mb4 NOT NULL,
               `Category` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
@@ -3633,11 +3768,100 @@ public sealed class MiniAdminDatabaseInitializer(
               `CreatedAt` datetime(6) NOT NULL,
               `UpdatedAt` datetime(6) NOT NULL,
               PRIMARY KEY (`Id`),
-              UNIQUE KEY `IX_mini_notification_templates_Code` (`Code`),
-              KEY `IX_mini_notification_templates_Category` (`Category`)
+              UNIQUE KEY `IX_mini_notification_templates_TenantId_Code` (`TenantId`, `Code`),
+              KEY `IX_mini_notification_templates_Category` (`Category`),
+              CONSTRAINT `FK_notification_templates_tenant`
+                FOREIGN KEY (`TenantId`) REFERENCES `mini_tenants` (`Id`) ON DELETE CASCADE
             ) CHARACTER SET=utf8mb4;
             """,
             cancellationToken);
+
+        await EnsureNotificationTemplateTenantScopeAsync(cancellationToken);
+    }
+
+    private async Task EnsureNotificationTemplateTenantScopeAsync(
+        CancellationToken cancellationToken)
+    {
+        var connection = dbContext.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            if (!await ExistsAsync(
+                connection,
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'mini_notification_templates'
+                  AND COLUMN_NAME = 'TenantId'
+                """,
+                cancellationToken))
+            {
+                await ExecuteNonQueryAsync(
+                    connection,
+                    "ALTER TABLE `mini_notification_templates` ADD COLUMN `TenantId` char(36) COLLATE ascii_general_ci NULL AFTER `Id`",
+                    cancellationToken);
+            }
+
+            if (await ExistsAsync(
+                connection,
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'mini_notification_templates'
+                  AND INDEX_NAME = 'IX_mini_notification_templates_Code'
+                """,
+                cancellationToken))
+            {
+                await ExecuteNonQueryAsync(
+                    connection,
+                    "ALTER TABLE `mini_notification_templates` DROP INDEX `IX_mini_notification_templates_Code`",
+                    cancellationToken);
+            }
+
+            if (!await ExistsAsync(
+                connection,
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'mini_notification_templates'
+                  AND INDEX_NAME = 'IX_mini_notification_templates_TenantId_Code'
+                """,
+                cancellationToken))
+            {
+                await ExecuteNonQueryAsync(
+                    connection,
+                    "ALTER TABLE `mini_notification_templates` ADD UNIQUE INDEX `IX_mini_notification_templates_TenantId_Code` (`TenantId`, `Code`)",
+                    cancellationToken);
+            }
+
+            if (!await ExistsAsync(
+                connection,
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'mini_notification_templates'
+                  AND CONSTRAINT_NAME = 'FK_notification_templates_tenant'
+                """,
+                cancellationToken))
+            {
+                await ExecuteNonQueryAsync(
+                    connection,
+                    "ALTER TABLE `mini_notification_templates` ADD CONSTRAINT `FK_notification_templates_tenant` FOREIGN KEY (`TenantId`) REFERENCES `mini_tenants` (`Id`) ON DELETE CASCADE",
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
     }
 
     private async Task EnsureNotificationPolicyTableAsync(CancellationToken cancellationToken)

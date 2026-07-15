@@ -4478,25 +4478,29 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         var json = await response.Content.ReadFromJsonAsync<ApiEnvelope<CodeGeneratorPreviewData>>();
 
         Assert.NotNull(json);
-        var endpoint = Assert.Single(
+        var appService = Assert.Single(
             json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Api/Generated/{moduleName}Endpoints.cs");
+            file => file.RelativePath == $"src/MiniAdmin.Application/{moduleName}s/{moduleName}AppService.cs");
         var configuration = Assert.Single(
             json.Data.Files,
             file => file.RelativePath ==
                     $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}EntityTypeConfiguration.cs");
-        var menuSeed = Assert.Single(
+        var pageDefinition = Assert.Single(
             json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}MenuSeed.cs");
+            file => file.RelativePath == $"src/MiniAdmin.Application/{moduleName}s/{moduleName}PageDefinitionProvider.cs");
 
-        Assert.Contains($"RequirePermission(\"{permissionPrefix}:query\")", endpoint.Content);
-        Assert.Contains($"RequirePermission(\"{permissionPrefix}:create\")", endpoint.Content);
-        Assert.Contains($"RequirePermission(\"{permissionPrefix}:update\")", endpoint.Content);
-        Assert.Contains($"RequirePermission(\"{permissionPrefix}:delete\")", endpoint.Content);
+        Assert.Contains($"[DynamicApi(\"business/{routeSegment}\"", appService.Content);
+        Assert.Contains($"Permission = \"{permissionPrefix}:query\"", appService.Content);
+        Assert.Contains($"Permission = \"{permissionPrefix}:create\"", appService.Content);
+        Assert.Contains($"Permission = \"{permissionPrefix}:update\"", appService.Content);
+        Assert.Contains($"Permission = \"{permissionPrefix}:delete\"", appService.Content);
         Assert.Contains($"entity.ToTable(\"mini_{routeSegment.Replace('-', '_')}\")", configuration.Content);
         Assert.Contains("entity.HasKey(x => x.Id)", configuration.Content);
-        Assert.Contains($"{permissionPrefix}:query", menuSeed.Content);
-        Assert.Contains($"{permissionPrefix}:delete", menuSeed.Content);
+        Assert.Contains($"{permissionPrefix}:query", pageDefinition.Content);
+        Assert.Contains($"{permissionPrefix}:delete", pageDefinition.Content);
+        Assert.DoesNotContain(
+            json.Data.Files,
+            file => file.RelativePath.StartsWith("src/MiniAdmin.Api/Generated/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -4525,7 +4529,7 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         Assert.Contains($"{permissionPrefix}:export", json.Data.PermissionCodes);
         var endpoint = Assert.Single(
             json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Api/Generated/{moduleName}Endpoints.cs");
+            file => file.RelativePath == $"src/MiniAdmin.Api/Generated/{moduleName}TransportEndpoints.cs");
         var frontendApi = Assert.Single(
             json.Data.Files,
             file => file.RelativePath ==
@@ -4534,9 +4538,9 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
             json.Data.Files,
             file => file.RelativePath ==
                     $"frontend/vue-vben-admin/apps/web-antd/src/views/business/{routeSegment}/index.vue");
-        var menuSeed = Assert.Single(
+        var pageDefinition = Assert.Single(
             json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}MenuSeed.cs");
+            file => file.RelativePath == $"src/MiniAdmin.Application/{moduleName}s/{moduleName}PageDefinitionProvider.cs");
 
         Assert.Contains($"/business/{routeSegment}/export", endpoint.Content);
         Assert.Contains($"/business/{routeSegment}/import-template", endpoint.Content);
@@ -4546,8 +4550,9 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         Assert.Contains($"previewImport{moduleName}Api", frontendApi.Content);
         Assert.Contains("导入", frontendPage.Content);
         Assert.Contains("导出", frontendPage.Content);
-        Assert.Contains($"{permissionPrefix}:import", menuSeed.Content);
-        Assert.Contains($"{permissionPrefix}:export", menuSeed.Content);
+        Assert.Contains("IGeneratedTransportEndpointDefinition", endpoint.Content);
+        Assert.Contains($"{permissionPrefix}:import", pageDefinition.Content);
+        Assert.Contains($"{permissionPrefix}:export", pageDefinition.Content);
     }
 
     [Fact]
@@ -4589,12 +4594,9 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         var repository = Assert.Single(
             json.Data.Files,
             file => file.RelativePath == $"src/MiniAdmin.Infrastructure/Persistence/Ef{moduleName}Repository.cs");
-        var endpoint = Assert.Single(
+        var pageDefinition = Assert.Single(
             json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Api/Generated/{moduleName}Endpoints.cs");
-        var menuSeed = Assert.Single(
-            json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}MenuSeed.cs");
+            file => file.RelativePath == $"src/MiniAdmin.Application/{moduleName}s/{moduleName}PageDefinitionProvider.cs");
         var stateHandler = Assert.Single(
             json.Data.Files,
             file => file.RelativePath ==
@@ -4626,12 +4628,12 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         Assert.Contains("TryParseBusinessKey", stateHandler.Content);
         Assert.Contains("Approved", stateHandler.Content);
         Assert.Contains("Rejected", stateHandler.Content);
-        Assert.Contains($"/business/{routeSegment}/{{id:guid}}/submit-workflow", endpoint.Content);
-        Assert.Contains($"/business/{routeSegment}/{{id:guid}}/withdraw-workflow", endpoint.Content);
-        Assert.Contains($"RequirePermission(\"{permissionPrefix}:submit-workflow\")", endpoint.Content);
-        Assert.Contains($"RequirePermission(\"{permissionPrefix}:withdraw-workflow\")", endpoint.Content);
-        Assert.Contains($"{permissionPrefix}:submit-workflow", menuSeed.Content);
-        Assert.Contains($"{permissionPrefix}:withdraw-workflow", menuSeed.Content);
+        Assert.Contains("\"{id:guid}/submit-workflow\"", appService.Content);
+        Assert.Contains("\"{id:guid}/withdraw-workflow\"", appService.Content);
+        Assert.Contains($"Permission = \"{permissionPrefix}:submit-workflow\"", appService.Content);
+        Assert.Contains($"Permission = \"{permissionPrefix}:withdraw-workflow\"", appService.Content);
+        Assert.Contains($"{permissionPrefix}:submit-workflow", pageDefinition.Content);
+        Assert.Contains($"{permissionPrefix}:withdraw-workflow", pageDefinition.Content);
         Assert.Contains($"submit{moduleName}WorkflowApi", frontendApi.Content);
         Assert.Contains($"withdraw{moduleName}WorkflowApi", frontendApi.Content);
         Assert.Contains("审批状态", frontendPage.Content);
@@ -4804,16 +4806,17 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         var contracts = Assert.Single(
             json.Data.Files,
             file => file.RelativePath == $"src/MiniAdmin.Application.Contracts/{moduleName}s/{moduleName}Dtos.cs");
-        var endpoint = Assert.Single(
+        var appService = Assert.Single(
             json.Data.Files,
-            file => file.RelativePath == $"src/MiniAdmin.Api/Generated/{moduleName}Endpoints.cs");
+            file => file.RelativePath == $"src/MiniAdmin.Application/{moduleName}s/{moduleName}AppService.cs");
         var repository = Assert.Single(
             json.Data.Files,
             file => file.RelativePath == $"src/MiniAdmin.Infrastructure/Persistence/Ef{moduleName}Repository.cs");
 
         Assert.Contains("string? CurrentUserName = null", contracts.Content);
-        Assert.Contains("ClaimsPrincipal user", endpoint.Content);
-        Assert.Contains("query with { CurrentUserName = GetRequiredUserName(user) }", endpoint.Content);
+        Assert.Contains("ICurrentUserContext currentUser", appService.Content);
+        Assert.Contains("query with { CurrentUserName = currentUser.UserName }", appService.Content);
+        Assert.DoesNotContain("ClaimsPrincipal", appService.Content);
         Assert.Contains("IDataScopeProvider dataScopeProvider", repository.Content);
         Assert.Contains("ApplyDataScopeAsync(source, query.CurrentUserName, cancellationToken)", repository.Content);
         Assert.Contains("ApplyDataScopeAsync(ApplyTenantFilter(dbContext.Set<", repository.Content);
@@ -5260,6 +5263,7 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
             Path.Combine(root, "src", "MiniAdmin.Infrastructure", "Persistence", "Generated", $"{moduleName}EntityTypeConfiguration.cs"),
             Path.Combine(root, "src", "MiniAdmin.Infrastructure", "Persistence", "Generated", $"{moduleName}MenuSeed.cs"),
             Path.Combine(root, "src", "MiniAdmin.Api", "Generated", $"{moduleName}Endpoints.cs"),
+            Path.Combine(root, "src", "MiniAdmin.Api", "Generated", $"{moduleName}TransportEndpoints.cs"),
             Path.Combine(root, "frontend", "vue-vben-admin", "apps", "web-antd", "src", "api", "business", $"{routeSegment}.ts"),
             Path.Combine(root, "frontend", "vue-vben-admin", "apps", "web-antd", "src", "views", "business", routeSegment)
         };

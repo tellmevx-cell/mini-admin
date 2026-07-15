@@ -7,7 +7,10 @@ public sealed record SystemMonitorOverviewDto(
     SystemMonitorApplicationDto Application,
     SystemMonitorServerDto Server,
     IReadOnlyList<SystemMonitorDependencyDto> Dependencies,
-    SystemMonitorRecentDto Recent);
+    SystemMonitorRecentDto Recent,
+    SystemMonitorHardwareDto Hardware,
+    IReadOnlyList<SystemMonitorDiskDto> Disks,
+    IReadOnlyList<SystemMonitorNetworkDto> Networks);
 
 public sealed record SystemMonitorApiDto(
     string Status,
@@ -35,12 +38,47 @@ public sealed record SystemMonitorApplicationDto(
     string RuntimeVersion,
     DateTimeOffset StartedAt,
     long UptimeSeconds,
-    string ContentRootPath);
+    string ContentRootPath,
+    int ProcessId,
+    string ProcessArchitecture,
+    bool Is64BitProcess,
+    bool ServerGarbageCollection,
+    string GarbageCollectionLatencyMode);
 
 public sealed record SystemMonitorServerDto(
     string MachineName,
     string OperatingSystem,
     string Architecture);
+
+public sealed record SystemMonitorHardwareDto(
+    string Manufacturer,
+    string Model,
+    string MotherboardManufacturer,
+    string MotherboardModel,
+    string CpuModel,
+    IReadOnlyList<string> Gpus);
+
+public sealed record SystemMonitorDiskDto(
+    string Name,
+    string RootPath,
+    string DriveType,
+    string FileSystem,
+    bool IsReady,
+    long TotalBytes,
+    long AvailableBytes,
+    long UsedBytes,
+    double UsedPercent);
+
+public sealed record SystemMonitorNetworkDto(
+    string Name,
+    string Description,
+    string InterfaceType,
+    string Status,
+    long SpeedBitsPerSecond,
+    string MacAddress,
+    IReadOnlyList<string> Addresses,
+    long BytesReceived,
+    long BytesSent);
 
 public sealed record SystemMonitorDependencyDto(
     string Name,

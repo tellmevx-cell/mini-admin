@@ -44,7 +44,17 @@ public sealed class CodeGeneratorTemplateRenderer
                 false),
             new CodeGeneratorPreviewFileDto(
                 $"src/MiniAdmin.Application/{modulePlural}/{moduleName}AppService.cs",
-                RenderAppService(moduleName, modulePlural, request.BusinessName, dataScopeMode, entityFields, request.EnableImportExport, enableWorkflow, workflowBusinessType),
+                RenderAppService(
+                    moduleName,
+                    modulePlural,
+                    request.BusinessName,
+                    routePath,
+                    permissionPrefix,
+                    dataScopeMode,
+                    entityFields,
+                    request.EnableImportExport,
+                    enableWorkflow,
+                    workflowBusinessType),
                 false),
             new CodeGeneratorPreviewFileDto(
                 $"src/MiniAdmin.Infrastructure/Persistence/Ef{moduleName}Repository.cs",
@@ -64,13 +74,26 @@ public sealed class CodeGeneratorTemplateRenderer
                 false));
         }
 
+        if (request.EnableImportExport)
+        {
+            files.Add(new CodeGeneratorPreviewFileDto(
+                $"src/MiniAdmin.Api/Generated/{moduleName}TransportEndpoints.cs",
+                RenderTransportEndpoints(moduleName, modulePlural, routePath, permissionPrefix),
+                false));
+        }
+
         files.Add(new CodeGeneratorPreviewFileDto(
-            $"src/MiniAdmin.Api/Generated/{moduleName}Endpoints.cs",
-            RenderEndpoints(moduleName, modulePlural, routePath, permissionPrefix, dataScopeMode, request.EnableImportExport, enableWorkflow),
-            false));
-        files.Add(new CodeGeneratorPreviewFileDto(
-            $"src/MiniAdmin.Infrastructure/Persistence/Generated/{moduleName}MenuSeed.cs",
-            RenderMenuSeed(moduleName, request.BusinessName, routePath, routeSegment, permissionPrefix, request.ParentMenuId, request.EnableImportExport, enableWorkflow),
+            $"src/MiniAdmin.Application/{modulePlural}/{moduleName}PageDefinitionProvider.cs",
+            RenderPageDefinitionProvider(
+                moduleName,
+                modulePlural,
+                request.BusinessName,
+                routePath,
+                routeSegment,
+                permissionPrefix,
+                request.ParentMenuId,
+                request.EnableImportExport,
+                enableWorkflow),
             false));
         files.Add(new CodeGeneratorPreviewFileDto(
             $"frontend/vue-vben-admin/apps/web-antd/src/api/business/{routeSegment}.ts",
@@ -353,12 +376,9 @@ public sealed class CodeGeneratorTemplateRenderer
         bool enableImportExport,
         bool enableWorkflow)
     {
-        var updateParameters = IsDataScopeEnabled(dataScopeMode)
-            ? "Guid id, Save" + moduleName + "Request request, string? currentUserName, CancellationToken cancellationToken = default"
-            : "Guid id, Save" + moduleName + "Request request, CancellationToken cancellationToken = default";
-        var deleteParameters = IsDataScopeEnabled(dataScopeMode)
-            ? "Guid id, string? currentUserName, CancellationToken cancellationToken = default"
-            : "Guid id, CancellationToken cancellationToken = default";
+        const string deleteParameters = "Guid id, CancellationToken cancellationToken = default";
+        var updateParameters = "Guid id, Save" + moduleName +
+            "Request request, CancellationToken cancellationToken = default";
         var importExportMethods = enableImportExport
             ? $$"""
 
@@ -373,29 +393,23 @@ public sealed class CodeGeneratorTemplateRenderer
                    Task<{{moduleName}}ExportFileDto> ExportImportErrorsAsync(Stream stream, CancellationToken cancellationToken = default);
                """
             : string.Empty;
-        var workflowUsing = enableWorkflow
-            ? "using MiniAdmin.Application.Contracts.Workflows;" + Environment.NewLine
-            : string.Empty;
         var workflowMethods = enableWorkflow
             ? $$"""
 
                    Task<{{moduleName}}Dto?> SubmitWorkflowAsync(
                        Guid id,
                        Submit{{moduleName}}WorkflowRequest request,
-                       WorkflowUserContext user,
                        CancellationToken cancellationToken = default);
 
                    Task<{{moduleName}}Dto?> WithdrawWorkflowAsync(
                        Guid id,
                        Withdraw{{moduleName}}WorkflowRequest request,
-                       WorkflowUserContext user,
                        CancellationToken cancellationToken = default);
                """
             : string.Empty;
         return $$"""
                using MiniAdmin.Application.Contracts.Common;
                using MiniAdmin.Application.Contracts.CodeGenerators;
-               {{workflowUsing}}
 
                namespace MiniAdmin.Application.Contracts.{{modulePlural}};
 
@@ -529,6 +543,8 @@ public sealed class CodeGeneratorTemplateRenderer
         string moduleName,
         string modulePlural,
         string businessName,
+        string routePath,
+        string permissionPrefix,
         string dataScopeMode,
         IReadOnlyList<CodeGeneratorFieldConfigDto> fields,
         bool enableImportExport,
@@ -542,6 +558,12 @@ public sealed class CodeGeneratorTemplateRenderer
             constructorDependencies.Add("IWorkbookService workbookService");
         }
 
+        var requiresCurrentUser = IsDataScopeEnabled(dataScopeMode) || enableWorkflow;
+        if (requiresCurrentUser)
+        {
+            constructorDependencies.Add("ICurrentUserContext currentUser");
+        }
+
         if (enableWorkflow)
         {
             constructorDependencies.Add("IWorkflowAppService workflowAppService");
@@ -550,20 +572,23 @@ public sealed class CodeGeneratorTemplateRenderer
         var constructorSuffix = constructorDependencies.Count == 0
             ? string.Empty
             : ", " + string.Join(", ", constructorDependencies);
-        var updateSignature = IsDataScopeEnabled(dataScopeMode)
-            ? "Guid id, Save" + moduleName + "Request request, string? currentUserName, CancellationToken cancellationToken = default"
-            : "Guid id, Save" + moduleName + "Request request, CancellationToken cancellationToken = default";
+        var updateSignature = "Guid id, Save" + moduleName +
+            "Request request, CancellationToken cancellationToken = default";
         var updateCall = IsDataScopeEnabled(dataScopeMode)
-            ? $"{fieldName}Repository.UpdateAsync(id, request, currentUserName, cancellationToken)"
+            ? $"{fieldName}Repository.UpdateAsync(id, request, currentUser.UserName, cancellationToken)"
             : $"{fieldName}Repository.UpdateAsync(id, request, cancellationToken)";
-        var deleteSignature = IsDataScopeEnabled(dataScopeMode)
-            ? "Guid id, string? currentUserName, CancellationToken cancellationToken = default"
-            : "Guid id, CancellationToken cancellationToken = default";
+        const string deleteSignature = "Guid id, CancellationToken cancellationToken = default";
         var deleteCall = IsDataScopeEnabled(dataScopeMode)
-            ? $"{fieldName}Repository.DeleteAsync(id, currentUserName, cancellationToken)"
+            ? $"{fieldName}Repository.DeleteAsync(id, currentUser.UserName, cancellationToken)"
             : $"{fieldName}Repository.DeleteAsync(id, cancellationToken)";
+        var listQuery = IsDataScopeEnabled(dataScopeMode)
+            ? "query with { CurrentUserName = currentUser.UserName }"
+            : "query";
         var importExportMethods = enableImportExport
-            ? RenderAppServiceImportExport(moduleName, fieldName, fields)
+            ? RenderAppServiceImportExport(moduleName, fieldName, fields, IsDataScopeEnabled(dataScopeMode))
+            : string.Empty;
+        var securityUsing = requiresCurrentUser
+            ? "using MiniAdmin.Application.Contracts.Security;" + Environment.NewLine
             : string.Empty;
         var workflowUsing = enableWorkflow
             ? "using MiniAdmin.Application.Contracts.Workflows;" + Environment.NewLine +
@@ -571,33 +596,70 @@ public sealed class CodeGeneratorTemplateRenderer
               "using System.Text.Json;" + Environment.NewLine
             : string.Empty;
         var workflowMethods = enableWorkflow
-            ? RenderAppServiceWorkflow(moduleName, fieldName, businessName, dataScopeMode, workflowBusinessType)
+            ? RenderAppServiceWorkflow(
+                moduleName,
+                fieldName,
+                businessName,
+                permissionPrefix,
+                dataScopeMode,
+                workflowBusinessType)
             : string.Empty;
+        var apiRoute = routePath.Trim().Trim('/');
+        var resource = permissionPrefix.Replace(':', '.');
         return $$"""
                using MiniAdmin.Application.Contracts.Common;
                using MiniAdmin.Application.Contracts.{{modulePlural}};
+               {{securityUsing}}using MiniAdmin.Platform.DynamicApi;
                {{workflowUsing}}
 
                namespace MiniAdmin.Application.{{modulePlural}};
 
+               [DynamicApi("{{apiRoute}}", Name = "{{moduleName}}", Tag = "Generated Business")]
                public sealed class {{moduleName}}AppService(I{{moduleName}}Repository {{fieldName}}Repository{{constructorSuffix}}) : I{{moduleName}}AppService
                {
+                   [DynamicGet(
+                       "list",
+                       Permission = "{{permissionPrefix}}:query",
+                       Resource = "{{resource}}",
+                       Action = "query",
+                       OperationId = "{{moduleName}}_GetList",
+                       Summary = "查询{{EscapeCSharpString(businessName)}}")]
                    public Task<PageResult<{{moduleName}}Dto>> GetListAsync({{moduleName}}ListQuery query, CancellationToken cancellationToken = default)
                    {
-                       return {{fieldName}}Repository.GetListAsync(query, cancellationToken);
+                       return {{fieldName}}Repository.GetListAsync({{listQuery}}, cancellationToken);
                    }
                {{importExportMethods}}
 
+                   [DynamicPost(
+                       Permission = "{{permissionPrefix}}:create",
+                       Resource = "{{resource}}",
+                       Action = "create",
+                       OperationId = "{{moduleName}}_Create",
+                       Summary = "创建{{EscapeCSharpString(businessName)}}")]
                    public Task<{{moduleName}}Dto> CreateAsync(Save{{moduleName}}Request request, CancellationToken cancellationToken = default)
                    {
                        return {{fieldName}}Repository.CreateAsync(request, cancellationToken);
                    }
 
+                   [DynamicPut(
+                       "{id:guid}",
+                       Permission = "{{permissionPrefix}}:update",
+                       Resource = "{{resource}}",
+                       Action = "update",
+                       OperationId = "{{moduleName}}_Update",
+                       Summary = "更新{{EscapeCSharpString(businessName)}}")]
                    public Task<{{moduleName}}Dto?> UpdateAsync({{updateSignature}})
                    {
                        return {{updateCall}};
                    }
 
+                   [DynamicDelete(
+                       "{id:guid}",
+                       Permission = "{{permissionPrefix}}:delete",
+                       Resource = "{{resource}}",
+                       Action = "delete",
+                       OperationId = "{{moduleName}}_Delete",
+                       Summary = "删除{{EscapeCSharpString(businessName)}}")]
                    public Task<bool> DeleteAsync({{deleteSignature}})
                    {
                        return {{deleteCall}};
@@ -611,20 +673,22 @@ public sealed class CodeGeneratorTemplateRenderer
         string moduleName,
         string fieldName,
         string businessName,
+        string permissionPrefix,
         string dataScopeMode,
         string workflowBusinessType)
     {
         var entityTypeReference = $"global::MiniAdmin.Domain.Entities.{moduleName}";
         var isDataScopeEnabled = IsDataScopeEnabled(dataScopeMode);
         var getCall = isDataScopeEnabled
-            ? $"{fieldName}Repository.GetAsync(id, user.UserName, cancellationToken)"
+            ? $"{fieldName}Repository.GetAsync(id, currentUser.UserName, cancellationToken)"
             : $"{fieldName}Repository.GetAsync(id, cancellationToken)";
         var setPendingCall = isDataScopeEnabled
-            ? $"{fieldName}Repository.SetWorkflowStateAsync(id, \"Pending\", instance.Id, user.UserName, cancellationToken)"
+            ? $"{fieldName}Repository.SetWorkflowStateAsync(id, \"Pending\", instance.Id, currentUser.UserName, cancellationToken)"
             : $"{fieldName}Repository.SetWorkflowStateAsync(id, \"Pending\", instance.Id, cancellationToken)";
         var setWithdrawnCall = isDataScopeEnabled
-            ? $"{fieldName}Repository.SetWorkflowStateAsync(id, \"Withdrawn\", withdrawn.Id, user.UserName, cancellationToken)"
+            ? $"{fieldName}Repository.SetWorkflowStateAsync(id, \"Withdrawn\", withdrawn.Id, currentUser.UserName, cancellationToken)"
             : $"{fieldName}Repository.SetWorkflowStateAsync(id, \"Withdrawn\", withdrawn.Id, cancellationToken)";
+        var resource = permissionPrefix.Replace(':', '.');
 
         return $$"""
 
@@ -633,12 +697,19 @@ public sealed class CodeGeneratorTemplateRenderer
                        WriteIndented = false
                    };
 
+                   [DynamicPost(
+                       "{id:guid}/submit-workflow",
+                       Permission = "{{permissionPrefix}}:submit-workflow",
+                       Resource = "{{resource}}",
+                       Action = "submit-workflow",
+                       OperationId = "{{moduleName}}_SubmitWorkflow",
+                       Summary = "提交{{EscapeCSharpString(businessName)}}审批")]
                    public async Task<{{moduleName}}Dto?> SubmitWorkflowAsync(
                        Guid id,
                        Submit{{moduleName}}WorkflowRequest request,
-                       WorkflowUserContext user,
                        CancellationToken cancellationToken = default)
                    {
+                       var user = new WorkflowUserContext(currentUser.UserId, currentUser.UserName);
                        var item = await {{getCall}};
                        if (item is null)
                        {
@@ -676,12 +747,19 @@ public sealed class CodeGeneratorTemplateRenderer
                        return await {{setPendingCall}};
                    }
 
+                   [DynamicPost(
+                       "{id:guid}/withdraw-workflow",
+                       Permission = "{{permissionPrefix}}:withdraw-workflow",
+                       Resource = "{{resource}}",
+                       Action = "withdraw-workflow",
+                       OperationId = "{{moduleName}}_WithdrawWorkflow",
+                       Summary = "撤回{{EscapeCSharpString(businessName)}}审批")]
                    public async Task<{{moduleName}}Dto?> WithdrawWorkflowAsync(
                        Guid id,
                        Withdraw{{moduleName}}WorkflowRequest request,
-                       WorkflowUserContext user,
                        CancellationToken cancellationToken = default)
                    {
+                       var user = new WorkflowUserContext(currentUser.UserId, currentUser.UserName);
                        var item = await {{getCall}};
                        if (item is null)
                        {
@@ -713,8 +791,12 @@ public sealed class CodeGeneratorTemplateRenderer
     private static string RenderAppServiceImportExport(
         string moduleName,
         string fieldName,
-        IReadOnlyList<CodeGeneratorFieldConfigDto> fields)
+        IReadOnlyList<CodeGeneratorFieldConfigDto> fields,
+        bool isDataScopeEnabled)
     {
+        var exportQuery = isDataScopeEnabled
+            ? "query with { CurrentUserName = currentUser.UserName }"
+            : "query";
         var importFields = fields
             .Where(field => field.CreateVisible || field.UpdateVisible)
             .OrderBy(field => field.Sort)
@@ -754,7 +836,7 @@ public sealed class CodeGeneratorTemplateRenderer
 
                    public async Task<{{moduleName}}ExportFileDto> ExportAsync({{moduleName}}ListQuery query, CancellationToken cancellationToken = default)
                    {
-                       var items = await {{fieldName}}Repository.GetExportListAsync(query, cancellationToken: cancellationToken);
+                       var items = await {{fieldName}}Repository.GetExportListAsync({{exportQuery}}, cancellationToken: cancellationToken);
                        var rows = new List<IReadOnlyList<string>>
                        {
                            new[] { {{exportHeaders}} }
@@ -1294,81 +1376,31 @@ public sealed class CodeGeneratorTemplateRenderer
                """;
     }
 
-    private static string RenderEndpoints(
+    private static string RenderTransportEndpoints(
         string moduleName,
         string modulePlural,
         string routePath,
-        string permissionPrefix,
-        string dataScopeMode,
-        bool enableImportExport,
-        bool enableWorkflow)
+        string permissionPrefix)
     {
         var fieldName = char.ToLowerInvariant(moduleName[0]) + moduleName[1..];
-        var isDataScopeEnabled = IsDataScopeEnabled(dataScopeMode);
-        var claimsUsing = isDataScopeEnabled || enableWorkflow
-            ? "using System.Security.Claims;" + Environment.NewLine
-            : string.Empty;
-        var workflowUsing = enableWorkflow
-            ? "using MiniAdmin.Application.Contracts.Workflows;" + Environment.NewLine
-            : string.Empty;
-        var listUserParameter = isDataScopeEnabled
-            ? Environment.NewLine + "            ClaimsPrincipal user,"
-            : string.Empty;
-        var listQueryExpression = isDataScopeEnabled
-            ? "query with { CurrentUserName = GetRequiredUserName(user) }"
-            : "query";
-        var updateUserParameter = isDataScopeEnabled
-            ? Environment.NewLine + "            ClaimsPrincipal user,"
-            : string.Empty;
-        var updateCall = isDataScopeEnabled
-            ? $"{fieldName}AppService.UpdateAsync(id, request, GetRequiredUserName(user), cancellationToken)"
-            : $"{fieldName}AppService.UpdateAsync(id, request, cancellationToken)";
-        var deleteUserParameter = isDataScopeEnabled
-            ? Environment.NewLine + "            ClaimsPrincipal user,"
-            : string.Empty;
-        var deleteCall = isDataScopeEnabled
-            ? $"{fieldName}AppService.DeleteAsync(id, GetRequiredUserName(user), cancellationToken)"
-            : $"{fieldName}AppService.DeleteAsync(id, cancellationToken)";
-        var userNameHelper = isDataScopeEnabled || enableWorkflow
-            ? """
+        return $$"""
+               using MiniAdmin.Api.CodeGenerators;
+               using MiniAdmin.Application.Contracts.{{modulePlural}};
+               using MiniAdmin.Shared;
 
-                  private static string GetRequiredUserName(ClaimsPrincipal principal)
-                  {
-                      return principal.Identity?.Name
-                          ?? principal.FindFirstValue(ClaimTypes.Name)
-                          ?? throw new InvalidOperationException("Authenticated user name is missing.");
-                  }
-              """
-            : string.Empty;
-        var workflowUserHelper = enableWorkflow
-            ? """
+               namespace MiniAdmin.Api.Generated;
 
-                  private static WorkflowUserContext GetWorkflowUserContext(ClaimsPrincipal principal)
-                  {
-                      return new WorkflowUserContext(
-                          GetRequiredUserId(principal),
-                          GetRequiredUserName(principal));
-                  }
-
-                  private static Guid GetRequiredUserId(ClaimsPrincipal principal)
-                  {
-                      var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
-                      return Guid.TryParse(userId, out var value)
-                          ? value
-                          : throw new InvalidOperationException("Authenticated user id is missing.");
-                  }
-              """
-            : string.Empty;
-        var importExportEndpoints = enableImportExport
-            ? $$"""
-
+               // File upload and download require transport-specific HTTP results and stay as a thin adapter.
+               public sealed class {{moduleName}}TransportEndpoints : IGeneratedTransportEndpointDefinition
+               {
+                   public void MapEndpoints(IEndpointRouteBuilder endpoints)
+                   {
                        endpoints.MapGet("{{routePath}}/export", async (
                            [AsParameters] {{moduleName}}ListQuery query,
-               {{listUserParameter}}
                            I{{moduleName}}AppService {{fieldName}}AppService,
                            CancellationToken cancellationToken) =>
                        {
-                           var file = await {{fieldName}}AppService.ExportAsync({{listQueryExpression}}, cancellationToken);
+                           var file = await {{fieldName}}AppService.ExportAsync(query, cancellationToken);
                            return Results.File(file.Content, file.ContentType, file.FileName);
                        }).RequirePermission("{{permissionPrefix}}:export");
 
@@ -1409,128 +1441,14 @@ public sealed class CodeGeneratorTemplateRenderer
                            var result = await {{fieldName}}AppService.ImportAsync(stream, cancellationToken);
                            return Results.Ok(ApiResponse<{{moduleName}}ImportResultDto>.Ok(result));
                        }).DisableAntiforgery().RequirePermission("{{permissionPrefix}}:import");
-               """
-            : string.Empty;
-        var workflowEndpoints = enableWorkflow
-            ? $$"""
-
-                       endpoints.MapPost("{{routePath}}/{id:guid}/submit-workflow", async (
-                           Guid id,
-                           Submit{{moduleName}}WorkflowRequest request,
-                           ClaimsPrincipal user,
-                           I{{moduleName}}AppService {{fieldName}}AppService,
-                           CancellationToken cancellationToken) =>
-                       {
-                           try
-                           {
-                               var result = await {{fieldName}}AppService.SubmitWorkflowAsync(
-                                   id,
-                                   request,
-                                   GetWorkflowUserContext(user),
-                                   cancellationToken);
-                               return result is null
-                                   ? Results.NotFound(ApiResponse<{{moduleName}}Dto?>.Fail("{{moduleName}} not found."))
-                                   : Results.Ok(ApiResponse<{{moduleName}}Dto>.Ok(result));
-                           }
-                           catch (InvalidOperationException exception)
-                           {
-                               return Results.BadRequest(ApiResponse<{{moduleName}}Dto?>.Fail(exception.Message));
-                           }
-                       }).RequirePermission("{{permissionPrefix}}:submit-workflow");
-
-                       endpoints.MapPost("{{routePath}}/{id:guid}/withdraw-workflow", async (
-                           Guid id,
-                           Withdraw{{moduleName}}WorkflowRequest request,
-                           ClaimsPrincipal user,
-                           I{{moduleName}}AppService {{fieldName}}AppService,
-                           CancellationToken cancellationToken) =>
-                       {
-                           try
-                           {
-                               var result = await {{fieldName}}AppService.WithdrawWorkflowAsync(
-                                   id,
-                                   request,
-                                   GetWorkflowUserContext(user),
-                                   cancellationToken);
-                               return result is null
-                                   ? Results.NotFound(ApiResponse<{{moduleName}}Dto?>.Fail("{{moduleName}} not found."))
-                                   : Results.Ok(ApiResponse<{{moduleName}}Dto>.Ok(result));
-                           }
-                           catch (InvalidOperationException exception)
-                           {
-                               return Results.BadRequest(ApiResponse<{{moduleName}}Dto?>.Fail(exception.Message));
-                           }
-                       }).RequirePermission("{{permissionPrefix}}:withdraw-workflow");
-               """
-            : string.Empty;
-        return $$"""
-               {{claimsUsing}}
-               using MiniAdmin.Api.CodeGenerators;
-               using MiniAdmin.Application.Contracts.Common;
-               using MiniAdmin.Application.Contracts.{{modulePlural}};
-               {{workflowUsing}}
-               using MiniAdmin.Shared;
-
-               namespace MiniAdmin.Api.Generated;
-
-               public sealed class {{moduleName}}Endpoints : IGeneratedCrudEndpointDefinition
-               {
-                   public void MapEndpoints(IEndpointRouteBuilder endpoints)
-                   {
-                       endpoints.MapGet("{{routePath}}/list", async (
-                           [AsParameters] {{moduleName}}ListQuery query,
-               {{listUserParameter}}
-                           I{{moduleName}}AppService {{fieldName}}AppService,
-                           CancellationToken cancellationToken) =>
-                       {
-                           var result = await {{fieldName}}AppService.GetListAsync({{listQueryExpression}}, cancellationToken);
-                           return Results.Ok(ApiResponse<PageResult<{{moduleName}}Dto>>.Ok(result));
-                       }).RequirePermission("{{permissionPrefix}}:query");
-               {{importExportEndpoints}}
-
-                       endpoints.MapPost("{{routePath}}", async (
-                           Save{{moduleName}}Request request,
-                           I{{moduleName}}AppService {{fieldName}}AppService,
-                           CancellationToken cancellationToken) =>
-                       {
-                           var result = await {{fieldName}}AppService.CreateAsync(request, cancellationToken);
-                           return Results.Ok(ApiResponse<{{moduleName}}Dto>.Ok(result));
-                       }).RequirePermission("{{permissionPrefix}}:create");
-
-                       endpoints.MapPut("{{routePath}}/{id:guid}", async (
-                           Guid id,
-                           Save{{moduleName}}Request request,
-               {{updateUserParameter}}
-                           I{{moduleName}}AppService {{fieldName}}AppService,
-                           CancellationToken cancellationToken) =>
-                       {
-                           var result = await {{updateCall}};
-                           return result is null
-                               ? Results.NotFound(ApiResponse<{{moduleName}}Dto?>.Fail("{{moduleName}} not found."))
-                               : Results.Ok(ApiResponse<{{moduleName}}Dto>.Ok(result));
-                       }).RequirePermission("{{permissionPrefix}}:update");
-
-                       endpoints.MapDelete("{{routePath}}/{id:guid}", async (
-                           Guid id,
-               {{deleteUserParameter}}
-                           I{{moduleName}}AppService {{fieldName}}AppService,
-                           CancellationToken cancellationToken) =>
-                       {
-                           var deleted = await {{deleteCall}};
-                           return deleted
-                               ? Results.Ok(ApiResponse<bool>.Ok(true))
-                               : Results.NotFound(ApiResponse<bool>.Fail("{{moduleName}} not found."));
-                       }).RequirePermission("{{permissionPrefix}}:delete");
-               {{workflowEndpoints}}
                    }
-               {{userNameHelper}}
-               {{workflowUserHelper}}
                }
                """;
     }
 
-    private static string RenderMenuSeed(
+    private static string RenderPageDefinitionProvider(
         string moduleName,
+        string modulePlural,
         string businessName,
         string routePath,
         string routeSegment,
@@ -1540,198 +1458,71 @@ public sealed class CodeGeneratorTemplateRenderer
         bool enableWorkflow)
     {
         var menuId = CreateDeterministicGuid(moduleName, "menu");
-        var queryPermissionId = CreateDeterministicGuid(moduleName, "query");
-        var createPermissionId = CreateDeterministicGuid(moduleName, "create");
-        var updatePermissionId = CreateDeterministicGuid(moduleName, "update");
-        var deletePermissionId = CreateDeterministicGuid(moduleName, "delete");
-        var importPermissionId = CreateDeterministicGuid(moduleName, "import");
-        var exportPermissionId = CreateDeterministicGuid(moduleName, "export");
-        var submitWorkflowPermissionId = CreateDeterministicGuid(moduleName, "submit-workflow");
-        var withdrawWorkflowPermissionId = CreateDeterministicGuid(moduleName, "withdraw-workflow");
+        var permissions = new List<(string Action, Guid Id)>
+        {
+            ("query", CreateDeterministicGuid(moduleName, "query")),
+            ("create", CreateDeterministicGuid(moduleName, "create")),
+            ("update", CreateDeterministicGuid(moduleName, "update")),
+            ("delete", CreateDeterministicGuid(moduleName, "delete"))
+        };
+        if (enableImportExport)
+        {
+            permissions.Add(("import", CreateDeterministicGuid(moduleName, "import")));
+            permissions.Add(("export", CreateDeterministicGuid(moduleName, "export")));
+        }
+
+        if (enableWorkflow)
+        {
+            permissions.Add(("submit-workflow", CreateDeterministicGuid(moduleName, "submit-workflow")));
+            permissions.Add(("withdraw-workflow", CreateDeterministicGuid(moduleName, "withdraw-workflow")));
+        }
+
+        var permissionDefinitions = string.Join(
+            "," + Environment.NewLine,
+            permissions.Select(permission =>
+                $"                Permission(\"{permission.Action}\", \"{permissionPrefix}:{permission.Action}\", \"{permission.Id}\")"));
         var parentExpression = string.IsNullOrWhiteSpace(parentMenuId)
             ? "null"
             : $"Guid.Parse(\"{parentMenuId.Trim()}\")";
-        var importExportPermissionSeed = enableImportExport
-            ? $$"""
-
-                       var importPermissionId = Guid.Parse("{{importPermissionId}}");
-                       var exportPermissionId = Guid.Parse("{{exportPermissionId}}");
-               """
-            : string.Empty;
-        var importExportMenus = enableImportExport
-            ? $$"""
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = importPermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}ImportPermission",
-                           Path = "{{permissionPrefix}}:import",
-                           Title = "{{permissionPrefix}}:import",
-                           Order = 5,
-                           PermissionCode = "{{permissionPrefix}}:import",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = exportPermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}ExportPermission",
-                           Path = "{{permissionPrefix}}:export",
-                           Title = "{{permissionPrefix}}:export",
-                           Order = 6,
-                           PermissionCode = "{{permissionPrefix}}:export",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-               """
-            : string.Empty;
-        var importExportRoleMenus = enableImportExport
-            ? """
-                       await EnsureAdminRoleMenuAsync(dbContext, importPermissionId, cancellationToken);
-                       await EnsureAdminRoleMenuAsync(dbContext, exportPermissionId, cancellationToken);
-              """
-            : string.Empty;
-        var workflowPermissionSeed = enableWorkflow
-            ? $$"""
-
-                       var submitWorkflowPermissionId = Guid.Parse("{{submitWorkflowPermissionId}}");
-                       var withdrawWorkflowPermissionId = Guid.Parse("{{withdrawWorkflowPermissionId}}");
-               """
-            : string.Empty;
-        var workflowMenus = enableWorkflow
-            ? $$"""
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = submitWorkflowPermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}SubmitWorkflowPermission",
-                           Path = "{{permissionPrefix}}:submit-workflow",
-                           Title = "{{permissionPrefix}}:submit-workflow",
-                           Order = 7,
-                           PermissionCode = "{{permissionPrefix}}:submit-workflow",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = withdrawWorkflowPermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}WithdrawWorkflowPermission",
-                           Path = "{{permissionPrefix}}:withdraw-workflow",
-                           Title = "{{permissionPrefix}}:withdraw-workflow",
-                           Order = 8,
-                           PermissionCode = "{{permissionPrefix}}:withdraw-workflow",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-               """
-            : string.Empty;
-        var workflowRoleMenus = enableWorkflow
-            ? """
-                       await EnsureAdminRoleMenuAsync(dbContext, submitWorkflowPermissionId, cancellationToken);
-                       await EnsureAdminRoleMenuAsync(dbContext, withdrawWorkflowPermissionId, cancellationToken);
-              """
-            : string.Empty;
+        var resource = permissionPrefix.Replace(':', '.');
 
         return $$"""
-               using MiniAdmin.Domain.Entities;
+               using MiniAdmin.Platform.Navigation;
 
-               namespace MiniAdmin.Infrastructure.Persistence.Generated;
+               namespace MiniAdmin.Application.{{modulePlural}};
 
-               public sealed class {{moduleName}}MenuSeed : GeneratedCrudSeedDefinitionBase
+               public sealed class {{moduleName}}PageDefinitionProvider : IPageDefinitionProvider
                {
-                   public override async Task SeedAsync(MiniAdminDbContext dbContext, CancellationToken cancellationToken = default)
+                   public IEnumerable<PageDefinition> GetPages()
                    {
-                       Guid? parentMenuId = {{parentExpression}};
-                       var menuId = Guid.Parse("{{menuId}}");
-                       var queryPermissionId = Guid.Parse("{{queryPermissionId}}");
-                       var createPermissionId = Guid.Parse("{{createPermissionId}}");
-                       var updatePermissionId = Guid.Parse("{{updatePermissionId}}");
-                       var deletePermissionId = Guid.Parse("{{deletePermissionId}}");
-               {{importExportPermissionSeed}}
-               {{workflowPermissionSeed}}
+                       yield return new PageDefinition(
+                           Key: "{{resource}}",
+                           ParentKey: null,
+                           Path: "{{routePath}}",
+                           Component: "/business/{{routeSegment}}/index",
+                           Redirect: null,
+                           Icon: "lucide:table-2",
+                           Order: 100,
+                           I18nKey: "page.generated.{{moduleName}}",
+                           Title: new LocalizedText("{{EscapeCSharpString(businessName)}}", "{{EscapeCSharpString(businessName)}}"),
+                           IsVisible: true,
+                           Permissions:
+                           [
+               {{permissionDefinitions}}
+                           ],
+                           Id: Guid.Parse("{{menuId}}"),
+                           ParentId: {{parentExpression}});
+                   }
 
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = menuId,
-                           ParentId = parentMenuId,
-                           Name = "{{moduleName}}",
-                           Path = "{{routePath}}",
-                           Component = "/business/{{routeSegment}}/index",
-                           Title = "{{businessName}}",
-                           Icon = "lucide:table-2",
-                           Order = 100,
-                           PermissionCode = "{{permissionPrefix}}:query",
-                           IsEnabled = true,
-                           IsVisible = true
-                       }, cancellationToken);
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = queryPermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}QueryPermission",
-                           Path = "{{permissionPrefix}}:query",
-                           Title = "{{permissionPrefix}}:query",
-                           Order = 1,
-                           PermissionCode = "{{permissionPrefix}}:query",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = createPermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}CreatePermission",
-                           Path = "{{permissionPrefix}}:create",
-                           Title = "{{permissionPrefix}}:create",
-                           Order = 2,
-                           PermissionCode = "{{permissionPrefix}}:create",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = updatePermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}UpdatePermission",
-                           Path = "{{permissionPrefix}}:update",
-                           Title = "{{permissionPrefix}}:update",
-                           Order = 3,
-                           PermissionCode = "{{permissionPrefix}}:update",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-
-                       await EnsureMenuAsync(dbContext, new Menu
-                       {
-                           Id = deletePermissionId,
-                           ParentId = menuId,
-                           Name = "{{moduleName}}DeletePermission",
-                           Path = "{{permissionPrefix}}:delete",
-                           Title = "{{permissionPrefix}}:delete",
-                           Order = 4,
-                           PermissionCode = "{{permissionPrefix}}:delete",
-                           IsEnabled = true,
-                           IsVisible = false
-                       }, cancellationToken);
-               {{importExportMenus}}
-               {{workflowMenus}}
-
-                       await EnsureAdminRoleMenuAsync(dbContext, menuId, cancellationToken);
-                       await EnsureAdminRoleMenuAsync(dbContext, queryPermissionId, cancellationToken);
-                       await EnsureAdminRoleMenuAsync(dbContext, createPermissionId, cancellationToken);
-                       await EnsureAdminRoleMenuAsync(dbContext, updatePermissionId, cancellationToken);
-                       await EnsureAdminRoleMenuAsync(dbContext, deletePermissionId, cancellationToken);
-               {{importExportRoleMenus}}
-               {{workflowRoleMenus}}
+                   private static PermissionDefinition Permission(string action, string code, string id)
+                   {
+                       return new PermissionDefinition(
+                           code,
+                           "{{resource}}",
+                           action,
+                           $"permission.generated.{{moduleName}}.{action}",
+                           new LocalizedText(code, code),
+                           Guid.Parse(id));
                    }
                }
                """;
@@ -1911,6 +1702,7 @@ public sealed class CodeGeneratorTemplateRenderer
                  return requestClient.post<{{typeName}}>(
                    `/business/{{routeSegment}}/${id}/submit-workflow`,
                    data,
+                   rawResponse,
                  );
                }
 
@@ -1921,6 +1713,7 @@ public sealed class CodeGeneratorTemplateRenderer
                  return requestClient.post<{{typeName}}>(
                    `/business/{{routeSegment}}/${id}/withdraw-workflow`,
                    data,
+                   rawResponse,
                  );
                }
                """
@@ -1931,6 +1724,8 @@ public sealed class CodeGeneratorTemplateRenderer
                import { requestClient } from '#/api/request';
 
                {{apiUrlDeclaration}}
+               const rawResponse = { responseReturn: 'body' as const };
+
                export interface {{typeName}} {
                  id: string;
                {{workflowInterfaceFields}}
@@ -1950,19 +1745,22 @@ public sealed class CodeGeneratorTemplateRenderer
                {{importExportTypes}}
 
                export async function get{{moduleName}}ListApi(params: Record<string, unknown>) {
-                 return requestClient.get<{{moduleName}}ListResult>('/business/{{routeSegment}}/list', { params });
+                 return requestClient.get<{{moduleName}}ListResult>('/business/{{routeSegment}}/list', {
+                   params,
+                   ...rawResponse,
+                 });
                }
 
                export async function create{{moduleName}}Api(data: Save{{moduleName}}Params) {
-                 return requestClient.post<{{typeName}}>('/business/{{routeSegment}}', data);
+                 return requestClient.post<{{typeName}}>('/business/{{routeSegment}}', data, rawResponse);
                }
 
                export async function update{{moduleName}}Api(id: string, data: Save{{moduleName}}Params) {
-                 return requestClient.put<{{typeName}}>(`/business/{{routeSegment}}/${id}`, data);
+                 return requestClient.put<{{typeName}}>(`/business/{{routeSegment}}/${id}`, data, rawResponse);
                }
 
                export async function delete{{moduleName}}Api(id: string) {
-                 return requestClient.delete<boolean>(`/business/{{routeSegment}}/${id}`);
+                 return requestClient.delete<boolean>(`/business/{{routeSegment}}/${id}`, rawResponse);
                }
                {{workflowApi}}
                {{importExportApi}}

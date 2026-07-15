@@ -13,6 +13,8 @@ COPY src/MiniAdmin.Application.Contracts/MiniAdmin.Application.Contracts.csproj 
 COPY src/MiniAdmin.Domain/MiniAdmin.Domain.csproj src/MiniAdmin.Domain/
 COPY src/MiniAdmin.Domain.Shared/MiniAdmin.Domain.Shared.csproj src/MiniAdmin.Domain.Shared/
 COPY src/MiniAdmin.Infrastructure/MiniAdmin.Infrastructure.csproj src/MiniAdmin.Infrastructure/
+COPY src/MiniAdmin.Platform.Core/MiniAdmin.Platform.Core.csproj src/MiniAdmin.Platform.Core/
+COPY src/MiniAdmin.Platform.AspNetCore/MiniAdmin.Platform.AspNetCore.csproj src/MiniAdmin.Platform.AspNetCore/
 COPY src/MiniAdmin.Shared/MiniAdmin.Shared.csproj src/MiniAdmin.Shared/
 RUN --mount=type=cache,id=miniadmin-nuget,target=/root/.nuget/packages \
     dotnet restore src/MiniAdmin.Api/MiniAdmin.Api.csproj

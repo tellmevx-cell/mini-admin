@@ -3,10 +3,11 @@ using MiniAdmin.Application.Contracts.Files;
 
 namespace MiniAdmin.Infrastructure.Storage;
 
-public sealed class CompositeFileStorageService(IOptions<FileStorageOptions> options) : IFileStorageService
+public sealed class CompositeFileStorageService(IOptions<FileStorageOptions> options) : IFileStorageService, IDisposable
 {
     private readonly LocalFileStorageService localStorage = new(options);
-    private readonly MinioFileStorageService minioStorage = new(options);
+    private readonly Dictionary<string, S3CompatibleFileStorageService> objectStorages =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public string ProviderName => GetCurrentProvider().ProviderName;
 
@@ -43,6 +44,16 @@ public sealed class CompositeFileStorageService(IOptions<FileStorageOptions> opt
         return GetProvider(storageProvider).DeleteAsync(storagePath, cancellationToken);
     }
 
+    public void Dispose()
+    {
+        foreach (var provider in objectStorages.Values)
+        {
+            provider.Dispose();
+        }
+
+        objectStorages.Clear();
+    }
+
     private IFileStorageProvider GetCurrentProvider()
     {
         return GetProvider(options.Value.Provider);
@@ -50,14 +61,28 @@ public sealed class CompositeFileStorageService(IOptions<FileStorageOptions> opt
 
     private IFileStorageProvider GetProvider(string storageProvider)
     {
-        if (storageProvider.Equals("Minio", StringComparison.OrdinalIgnoreCase) ||
-            storageProvider.Equals("minio", StringComparison.OrdinalIgnoreCase))
+        var normalized = storageProvider.Trim().ToLowerInvariant();
+        if (normalized is "minio" or "s3" or "oss" or "cos")
         {
-            return minioStorage;
+            if (objectStorages.TryGetValue(normalized, out var existing))
+            {
+                return existing;
+            }
+
+            S3CompatibleStorageOptions providerOptions = normalized switch
+            {
+                "minio" => options.Value.Minio,
+                "s3" => options.Value.S3,
+                "oss" => options.Value.Oss,
+                "cos" => options.Value.Cos,
+                _ => throw new InvalidOperationException($"Unsupported file storage provider: {storageProvider}.")
+            };
+            var created = new S3CompatibleFileStorageService(normalized, providerOptions);
+            objectStorages[normalized] = created;
+            return created;
         }
 
-        if (storageProvider.Equals("Local", StringComparison.OrdinalIgnoreCase) ||
-            storageProvider.Equals("local", StringComparison.OrdinalIgnoreCase))
+        if (normalized == "local")
         {
             return localStorage;
         }

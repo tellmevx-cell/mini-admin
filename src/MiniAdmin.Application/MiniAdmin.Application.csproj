@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\MiniAdmin.Application.Contracts\MiniAdmin.Application.Contracts.csproj" />
     <ProjectReference Include="..\MiniAdmin.Domain\MiniAdmin.Domain.csproj" />
+    <ProjectReference Include="..\MiniAdmin.Platform.Core\MiniAdmin.Platform.Core.csproj" />
     <ProjectReference Include="..\MiniAdmin.Shared\MiniAdmin.Shared.csproj" />
   </ItemGroup>
 

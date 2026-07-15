@@ -8,8 +8,10 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using MiniAdmin.Application.Contracts.AuditLogs;
 using MiniAdmin.Application.Contracts.Alerts;
+using MiniAdmin.Application.Contracts.Authorization;
 using MiniAdmin.Application.Contracts.Auth;
 using MiniAdmin.Application.Contracts.Caching;
+using MiniAdmin.Application.Contracts.Chat;
 using MiniAdmin.Application.Contracts.CodeGenerators;
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.DataScopes;
@@ -21,6 +23,7 @@ using MiniAdmin.Application.Contracts.Menus;
 using MiniAdmin.Application.Contracts.MultiTenancy;
 using MiniAdmin.Application.Contracts.Notices;
 using MiniAdmin.Application.Contracts.OnlineUsers;
+using MiniAdmin.Application.Contracts.OpenPlatform;
 using MiniAdmin.Application.Contracts.Parameters;
 using MiniAdmin.Application.Contracts.PermissionDiagnostics;
 using MiniAdmin.Application.Contracts.Positions;
@@ -33,15 +36,20 @@ using MiniAdmin.Application.Contracts.UserNotifications;
 using MiniAdmin.Application.Contracts.Users;
 using MiniAdmin.Application.Contracts.Workflows;
 using MiniAdmin.Infrastructure.Auth;
+using MiniAdmin.Infrastructure.Authorization;
 using MiniAdmin.Infrastructure.Caching;
 using MiniAdmin.Infrastructure.Common;
 using MiniAdmin.Infrastructure.Events;
 using MiniAdmin.Infrastructure.MultiTenancy;
+using MiniAdmin.Infrastructure.Navigation;
 using MiniAdmin.Infrastructure.Notifications;
+using MiniAdmin.Infrastructure.OpenPlatform;
 using MiniAdmin.Infrastructure.ScheduledJobs;
 using MiniAdmin.Infrastructure.Storage;
 using MiniAdmin.Infrastructure.UnitOfWork;
 using MiniAdmin.Infrastructure.Users;
+using MiniAdmin.Platform.Authorization;
+using MiniAdmin.Platform.Caching;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
@@ -74,6 +82,29 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
             }
 
             options.UseInMemoryDatabase(databaseOptions.InMemoryDatabaseName);
+        });
+        services.AddDbContext<OpenPlatformDbContext>(options =>
+        {
+            if (databaseOptions.Provider.Equals("MySql", StringComparison.OrdinalIgnoreCase))
+            {
+                var connectionString = configuration.GetConnectionString("MiniAdmin");
+                if (string.IsNullOrWhiteSpace(connectionString))
+                {
+                    throw new InvalidOperationException(
+                        "ConnectionStrings:MiniAdmin is required when Database:Provider is MySql.");
+                }
+
+                options.UseMySql(
+                    connectionString,
+                    ServerVersion.Parse(databaseOptions.MySqlServerVersion),
+                    mySql => mySql.MigrationsHistoryTable("__OpenPlatformMigrationsHistory"));
+            }
+            else
+            {
+                options.UseInMemoryDatabase($"{databaseOptions.InMemoryDatabaseName}-open-platform");
+            }
+
+            options.UseOpenIddict<Guid>();
         });
 
         services.Configure<DatabaseOptions>(options =>
@@ -141,6 +172,9 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
             options.Provider = fileStorageOptions.Provider;
             options.Local = fileStorageOptions.Local;
             options.Minio = fileStorageOptions.Minio;
+            options.S3 = fileStorageOptions.S3;
+            options.Oss = fileStorageOptions.Oss;
+            options.Cos = fileStorageOptions.Cos;
         });
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<ILocalEventBus, LocalEventBus>();
@@ -150,7 +184,14 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         services.AddScoped<ICurrentTenant>(serviceProvider =>
             serviceProvider.GetRequiredService<CurrentTenant>());
         services.AddScoped<ILoginSecurityService, DistributedLoginSecurityService>();
+        services.AddSingleton<IPlatformCache, PlatformCache>();
         services.AddScoped<IUserAuthorizationCache, DistributedUserAuthorizationCache>();
+        services.AddScoped<EfAbacPolicyRepository>();
+        services.AddScoped<IAbacPolicyRepository>(serviceProvider =>
+            serviceProvider.GetRequiredService<EfAbacPolicyRepository>());
+        services.AddScoped<IAbacPolicyProvider>(serviceProvider =>
+            serviceProvider.GetRequiredService<EfAbacPolicyRepository>());
+        services.AddScoped<IAuthorizationDecisionService, AbacAuthorizationDecisionService>();
         services.AddScoped<IDataScopeProvider, EfDataScopeProvider>();
         services.AddScoped<IAuditEntityChangeCollector, AuditEntityChangeCollector>();
         services.AddScoped<IAuditLogRepository, EfAuditLogRepository>();
@@ -158,6 +199,13 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         services.AddScoped<IAlertRuleRepository, EfAlertRuleRepository>();
         services.AddScoped<IAlertNotificationRecipientRepository, EfAlertNotificationRecipientRepository>();
         services.AddScoped<IUserNotificationRepository, EfUserNotificationRepository>();
+        services.TryAddSingleton<IRealtimeNotificationPublisher, NullRealtimeNotificationPublisher>();
+        services.AddScoped<IChatRepository, EfChatRepository>();
+        services.TryAddSingleton<IRealtimeChatPublisher, NullRealtimeChatPublisher>();
+        services.AddScoped<IOpenPlatformApplicationRepository, OpenPlatformApplicationRepository>();
+        services.AddScoped<IOpenPlatformUserRepository, OpenPlatformUserRepository>();
+        services.AddSingleton<IOpenApiSecretProtector, OpenApiSecretProtector>();
+        services.AddScoped<IOpenApiCredentialRepository, OpenApiCredentialRepository>();
         services.AddScoped<INotificationTemplateRepository, EfNotificationTemplateRepository>();
         services.AddScoped<INotificationPolicyRepository, EfNotificationPolicyRepository>();
         services.AddScoped<INotificationSubscriptionRepository, EfNotificationSubscriptionRepository>();
@@ -190,6 +238,8 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         RegisterWorkflowBusinessStateHandlers(services, typeof(MiniAdminDbContext).Assembly);
         services.AddScoped<IScheduledJobExecutor, ScheduledJobExecutor>();
         services.AddScoped<IMiniAdminDatabaseInitializer, MiniAdminDatabaseInitializer>();
+        services.AddScoped<IOpenPlatformDatabaseInitializer, OpenPlatformDatabaseInitializer>();
+        services.AddScoped<IPageRegistryMenuSynchronizer, PageRegistryMenuSynchronizer>();
         services.AddHostedService<ScheduledJobWorker>();
 
         return services;
@@ -421,22 +471,36 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         var options = new FileStorageOptions();
         var section = configuration.GetSection("FileStorage");
         var localSection = section.GetSection("Local");
-        var minioSection = section.GetSection("Minio");
 
         options.Provider = section["Provider"] ?? options.Provider;
         options.Local.RootPath = localSection["RootPath"] ?? options.Local.RootPath;
-        options.Minio.Endpoint = minioSection["Endpoint"] ?? options.Minio.Endpoint;
-        options.Minio.AccessKey = minioSection["AccessKey"] ?? options.Minio.AccessKey;
-        options.Minio.SecretKey = minioSection["SecretKey"] ?? options.Minio.SecretKey;
-        options.Minio.Bucket = minioSection["Bucket"] ?? options.Minio.Bucket;
-        options.Minio.Region = minioSection["Region"] ?? options.Minio.Region;
-
-        if (bool.TryParse(minioSection["UseSsl"], out var useSsl))
-        {
-            options.Minio.UseSsl = useSsl;
-        }
+        BindObjectStorageOptions(section.GetSection("Minio"), options.Minio);
+        BindObjectStorageOptions(section.GetSection("S3"), options.S3);
+        BindObjectStorageOptions(section.GetSection("Oss"), options.Oss);
+        BindObjectStorageOptions(section.GetSection("Cos"), options.Cos);
 
         return options;
+    }
+
+    private static void BindObjectStorageOptions(
+        IConfigurationSection section,
+        S3CompatibleStorageOptions options)
+    {
+        options.Endpoint = section["Endpoint"] ?? options.Endpoint;
+        options.AccessKey = section["AccessKey"] ?? options.AccessKey;
+        options.SecretKey = section["SecretKey"] ?? options.SecretKey;
+        options.SessionToken = section["SessionToken"] ?? options.SessionToken;
+        options.Bucket = section["Bucket"] ?? options.Bucket;
+        options.Region = section["Region"] ?? options.Region;
+        if (bool.TryParse(section["UseSsl"], out var useSsl))
+        {
+            options.UseSsl = useSsl;
+        }
+
+        if (bool.TryParse(section["ForcePathStyle"], out var forcePathStyle))
+        {
+            options.ForcePathStyle = forcePathStyle;
+        }
     }
 
     private static EmailNotificationOptions ReadEmailNotificationOptions(IConfiguration configuration)

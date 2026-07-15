@@ -16,6 +16,7 @@ public interface IUserAuthorizationCache
 
     Task<IReadOnlyList<VbenMenuDto>> GetMenusAsync(
         string userName,
+        string cultureName,
         Func<CancellationToken, Task<IReadOnlyList<VbenMenuDto>>> factory,
         CancellationToken cancellationToken = default);
 

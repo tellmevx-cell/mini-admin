@@ -5,6 +5,9 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Yarp.ReverseProxy.Forwarder;
+using Yarp.ReverseProxy.LoadBalancing;
+using Yarp.ReverseProxy.Model;
 
 namespace MiniAdmin.Gateway;
 
@@ -18,6 +21,14 @@ public static class Program
 
         builder.Services.Configure<GatewayRateLimitOptions>(
             builder.Configuration.GetSection(GatewayRateLimitOptions.SectionName));
+        builder.Services.Configure<GatewayCanaryOptions>(
+            builder.Configuration.GetSection(GatewayCanaryOptions.SectionName));
+        builder.Services.Configure<GatewayCircuitBreakerOptions>(
+            builder.Configuration.GetSection(GatewayCircuitBreakerOptions.SectionName));
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<CanaryDecisionService>();
+        builder.Services.AddSingleton<ILoadBalancingPolicy, CanaryLoadBalancingPolicy>();
+        builder.Services.AddSingleton<GatewayCircuitBreaker>();
 
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
@@ -59,6 +70,7 @@ public static class Program
 
         app.UseForwardedHeaders();
         app.UseCors(DevCorsPolicy);
+        app.UseMiddleware<GatewayTraceMiddleware>();
         app.UseRateLimiter();
 
         app.MapGet("/health", () => Results.Ok(new
@@ -70,7 +82,44 @@ public static class Program
         .DisableRateLimiting()
         .WithName("GatewayHealthCheck");
 
-        app.MapReverseProxy();
+        app.MapReverseProxy(proxyPipeline =>
+        {
+            proxyPipeline.Use(async (context, next) =>
+            {
+                var feature = context.GetReverseProxyFeature();
+                var clusterId = feature.Cluster.Config.ClusterId;
+                var circuitBreaker = context.RequestServices
+                    .GetRequiredService<GatewayCircuitBreaker>();
+                var lease = circuitBreaker.TryAcquire(clusterId);
+                if (!lease.Allowed)
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                    if (lease.RetryAfter.HasValue)
+                    {
+                        context.Response.Headers.RetryAfter = Math.Max(
+                            1,
+                            (int)Math.Ceiling(lease.RetryAfter.Value.TotalSeconds)).ToString();
+                    }
+
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        Code = StatusCodes.Status503ServiceUnavailable,
+                        Message = "上游服务暂时不可用，网关熔断器已开启。",
+                        Data = (object?)null
+                    }, context.RequestAborted);
+                    return;
+                }
+
+                await next();
+                var forwarderFailed = context.GetForwarderErrorFeature()?.Error is not
+                    (ForwarderError.None or ForwarderError.RequestCanceled);
+                var success = !forwarderFailed && context.Response.StatusCode < 500;
+                circuitBreaker.Report(clusterId, lease, success);
+            });
+            proxyPipeline.UseSessionAffinity();
+            proxyPipeline.UseLoadBalancing();
+            proxyPipeline.UsePassiveHealthChecks();
+        });
 
         app.Run();
     }

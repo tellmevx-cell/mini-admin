@@ -23,6 +23,8 @@ public sealed class MiniAdminDbContext(
         typeof(OnlineUser),
         typeof(SecurityEvent),
         typeof(UserNotification),
+        typeof(ChatConversation),
+        typeof(ChatMessage),
         typeof(NotificationDelivery),
         typeof(NotificationSubscription)
     ];
@@ -36,6 +38,7 @@ public sealed class MiniAdminDbContext(
         "AccessToken",
         "RefreshToken",
         "Secret",
+        "SecretCiphertext",
         "SigningKey"
     };
 
@@ -46,6 +49,8 @@ public sealed class MiniAdminDbContext(
     public DbSet<TenantPackage> TenantPackages => Set<TenantPackage>();
 
     public DbSet<Role> Roles => Set<Role>();
+
+    public DbSet<AbacPolicy> AbacPolicies => Set<AbacPolicy>();
 
     public DbSet<Menu> Menus => Set<Menu>();
 
@@ -92,6 +97,14 @@ public sealed class MiniAdminDbContext(
     public DbSet<AlertRuleRecipient> AlertRuleRecipients => Set<AlertRuleRecipient>();
 
     public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
+    public DbSet<OpenApiCredential> OpenApiCredentials => Set<OpenApiCredential>();
+
+    public DbSet<OpenApiNonce> OpenApiNonces => Set<OpenApiNonce>();
 
     public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
 
@@ -211,6 +224,26 @@ public sealed class MiniAdminDbContext(
                 .WithMany()
                 .HasForeignKey(x => x.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AbacPolicy>(entity =>
+        {
+            entity.ToTable("mini_abac_policies");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.Resource, x.Action, x.IsEnabled });
+            entity.HasIndex(x => new { x.SubjectType, x.SubjectId });
+            entity.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.SubjectType).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.SubjectId).HasMaxLength(128);
+            entity.Property(x => x.Resource).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.Action).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Effect).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.ConditionsJson).HasColumnType("longtext").IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(512);
+            entity.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Menu>(entity =>
@@ -553,6 +586,86 @@ public sealed class MiniAdminDbContext(
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<ChatConversation>(entity =>
+        {
+            entity.ToTable("mini_chat_conversations");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new
+            {
+                x.TenantScopeKey,
+                x.ParticipantOneId,
+                x.ParticipantTwoId
+            }).IsUnique();
+            entity.HasIndex(x => x.UpdatedAt);
+            entity.Property(x => x.TenantScopeKey).HasMaxLength(64).IsRequired();
+            entity.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.ParticipantOne)
+                .WithMany()
+                .HasForeignKey(x => x.ParticipantOneId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ParticipantTwo)
+                .WithMany()
+                .HasForeignKey(x => x.ParticipantTwoId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.ToTable("mini_chat_messages");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.ConversationId, x.CreatedAt });
+            entity.HasIndex(x => new { x.ReceiverId, x.ReadAt });
+            entity.Property(x => x.Content).HasMaxLength(2000).IsRequired();
+            entity.HasOne(x => x.Conversation)
+                .WithMany(x => x.Messages)
+                .HasForeignKey(x => x.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Sender)
+                .WithMany()
+                .HasForeignKey(x => x.SenderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Receiver)
+                .WithMany()
+                .HasForeignKey(x => x.ReceiverId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<OpenApiCredential>(entity =>
+        {
+            entity.ToTable("mini_openapi_credentials");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.AppKey).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.IsEnabled });
+            entity.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.AppKey).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.SecretCiphertext).HasMaxLength(1024).IsRequired();
+            entity.Property(x => x.PermissionsJson).HasColumnType("longtext").IsRequired();
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OpenApiNonce>(entity =>
+        {
+            entity.ToTable("mini_openapi_nonces");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.CredentialId, x.Nonce }).IsUnique();
+            entity.HasIndex(x => x.ExpiresAt);
+            entity.Property(x => x.Nonce).HasMaxLength(128).IsRequired();
+            entity.HasOne(x => x.Credential)
+                .WithMany()
+                .HasForeignKey(x => x.CredentialId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<NotificationDelivery>(entity =>
         {
             entity.ToTable("mini_notification_deliveries");
@@ -577,7 +690,7 @@ public sealed class MiniAdminDbContext(
         {
             entity.ToTable("mini_notification_templates");
             entity.HasKey(x => x.Id);
-            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
             entity.HasIndex(x => x.Category);
             entity.Property(x => x.Code).HasMaxLength(64).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(128).IsRequired();
@@ -588,6 +701,10 @@ public sealed class MiniAdminDbContext(
             entity.Property(x => x.MessageTemplate).HasMaxLength(2000).IsRequired();
             entity.Property(x => x.LinkTemplate).HasMaxLength(256);
             entity.Property(x => x.Remark).HasMaxLength(512);
+            entity.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<NotificationPolicy>(entity =>

@@ -1,5 +1,6 @@
 using System.Security.Claims;
-using MiniAdmin.Application.Contracts.Menus;
+using MiniAdmin.Platform.AspNetCore.Authorization;
+using MiniAdmin.Platform.Authorization;
 
 internal static class PermissionAuthorizationExtensions
 {
@@ -54,12 +55,42 @@ internal static class PermissionAuthorizationExtensions
             return false;
         }
 
-        var menuRepository = httpContext.RequestServices.GetRequiredService<IMenuRepository>();
-        var currentPermissionCodes = await menuRepository.GetPermissionCodesByUserNameAsync(
-            userName,
-            cancellationToken);
-        var currentPermissionSet = currentPermissionCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var decisionService = httpContext.RequestServices
+            .GetRequiredService<IAuthorizationDecisionService>();
+        AuthorizationDecision? lastDecision = null;
+        foreach (var permissionCode in permissionCodes)
+        {
+            var (resource, action) = ParsePermission(permissionCode);
+            lastDecision = await decisionService.AuthorizeAsync(
+                new AuthorizationRequest(
+                    httpContext.User,
+                    permissionCode,
+                    resource,
+                    action,
+                    AuthorizationRequestAttributeFactory.Create(httpContext)),
+                cancellationToken);
+            if (lastDecision.Allowed)
+            {
+                httpContext.Items[typeof(AuthorizationDecision)] = lastDecision;
+                return true;
+            }
+        }
 
-        return permissionCodes.Any(currentPermissionSet.Contains);
+        if (lastDecision is not null)
+        {
+            httpContext.Items[typeof(AuthorizationDecision)] = lastDecision;
+        }
+
+        return false;
+    }
+
+    private static (string? Resource, string? Action) ParsePermission(string permissionCode)
+    {
+        var separatorIndex = permissionCode.LastIndexOf(':');
+        return separatorIndex <= 0 || separatorIndex == permissionCode.Length - 1
+            ? (null, null)
+            : (
+                permissionCode[..separatorIndex].Replace(':', '.'),
+                permissionCode[(separatorIndex + 1)..]);
     }
 }

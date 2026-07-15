@@ -24,17 +24,26 @@ export interface SaveCustomerParams {
 }
 
 export async function getCustomerListApi(params: Record<string, unknown>) {
-  return requestClient.get<CustomerListResult>('/business/customer/list', { params });
+  return requestClient.get<CustomerListResult>('/business/customer/list', {
+    params,
+    responseReturn: 'body',
+  });
 }
 
 export async function createCustomerApi(data: SaveCustomerParams) {
-  return requestClient.post<CustomerItem>('/business/customer', data);
+  return requestClient.post<CustomerItem>('/business/customer', data, {
+    responseReturn: 'body',
+  });
 }
 
 export async function updateCustomerApi(id: string, data: SaveCustomerParams) {
-  return requestClient.put<CustomerItem>(`/business/customer/${id}`, data);
+  return requestClient.put<CustomerItem>(`/business/customer/${id}`, data, {
+    responseReturn: 'body',
+  });
 }
 
 export async function deleteCustomerApi(id: string) {
-  return requestClient.delete<boolean>(`/business/customer/${id}`);
+  return requestClient.delete<boolean>(`/business/customer/${id}`, {
+    responseReturn: 'body',
+  });
 }

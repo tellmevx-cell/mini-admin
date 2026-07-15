@@ -7,6 +7,8 @@
     <Project Path="src/MiniAdmin.Domain.Shared/MiniAdmin.Domain.Shared.csproj" />
     <Project Path="src/MiniAdmin.Domain/MiniAdmin.Domain.csproj" />
     <Project Path="src/MiniAdmin.Infrastructure/MiniAdmin.Infrastructure.csproj" />
+    <Project Path="src/MiniAdmin.Platform.AspNetCore/MiniAdmin.Platform.AspNetCore.csproj" />
+    <Project Path="src/MiniAdmin.Platform.Core/MiniAdmin.Platform.Core.csproj" />
     <Project Path="src/MiniAdmin.Shared/MiniAdmin.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/">

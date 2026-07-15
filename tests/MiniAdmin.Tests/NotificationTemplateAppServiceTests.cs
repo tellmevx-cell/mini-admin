@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Alerts;
+using MiniAdmin.Application.Contracts.MultiTenancy;
 using MiniAdmin.Application.Contracts.UserNotifications;
 using MiniAdmin.Application.UserNotifications;
 using MiniAdmin.Domain.Entities;
+using MiniAdmin.Infrastructure.Notifications;
 using MiniAdmin.Infrastructure.Persistence;
 
 namespace MiniAdmin.Tests;
@@ -30,6 +32,27 @@ public sealed class NotificationTemplateAppServiceTests
         Assert.Equal("审批催办：请假申请", preview.Title);
         Assert.Equal("admin 正在催办 直属主管审批", preview.Message);
         Assert.Equal("/workflow/center?biz=LEAVE-001", preview.Link);
+    }
+
+    [Fact]
+    public async Task Preview_Supports_Scriban_Conditions()
+    {
+        await using var dbContext = CreateDbContext();
+        var service = CreateTemplateService(dbContext);
+
+        var preview = await service.PreviewAsync(new PreviewNotificationTemplateRequest(
+            "{{ if level == 'Critical' }}严重告警{{ else }}普通告警{{ end }}",
+            "{{ title }}：{{ content }}",
+            null,
+            new Dictionary<string, string>
+            {
+                ["level"] = "Critical",
+                ["title"] = "磁盘空间",
+                ["content"] = "低于 10%"
+            }));
+
+        Assert.Equal("严重告警", preview.Title);
+        Assert.Equal("磁盘空间：低于 10%", preview.Message);
     }
 
     [Fact]
@@ -111,15 +134,34 @@ public sealed class NotificationTemplateAppServiceTests
 
     private static NotificationTemplateAppService CreateTemplateService(MiniAdminDbContext dbContext)
     {
-        var repository = new EfNotificationTemplateRepository(dbContext);
-        return new NotificationTemplateAppService(repository, new NotificationTemplateRenderer(repository));
+        var repository = new EfNotificationTemplateRepository(
+            dbContext,
+            new TestCurrentTenant(),
+            new TestPlatformCache());
+        return new NotificationTemplateAppService(
+            repository,
+            new ScribanNotificationTemplateRenderer(repository));
     }
 
     private static UserNotificationAppService CreateUserNotificationService(MiniAdminDbContext dbContext)
     {
-        var templateRepository = new EfNotificationTemplateRepository(dbContext);
+        var templateRepository = new EfNotificationTemplateRepository(
+            dbContext,
+            new TestCurrentTenant(),
+            new TestPlatformCache());
         return new UserNotificationAppService(
-            new EfUserNotificationRepository(dbContext),
-            new NotificationTemplateRenderer(templateRepository));
+            new EfUserNotificationRepository(dbContext, new NullRealtimeNotificationPublisher()),
+            new ScribanNotificationTemplateRenderer(templateRepository));
+    }
+
+    private sealed class TestCurrentTenant : ICurrentTenant
+    {
+        public Guid? TenantId => null;
+
+        public string? TenantCode => null;
+
+        public bool IsPlatform => true;
+
+        public bool IsTenant => false;
     }
 }

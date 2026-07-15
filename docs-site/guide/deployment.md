@@ -35,13 +35,15 @@ dotnet publish src/MiniAdmin.Gateway/MiniAdmin.Gateway.csproj -c Release -o arti
 默认开发上游是 `http://localhost:5021/`。生产环境建议通过环境变量指定 API 地址：
 
 ```powershell
-$env:ReverseProxy__Clusters__miniadmin_api__Destinations__api__Address = "http://your-api-inner-host:8080/"
+$env:ReverseProxy__Clusters__miniadmin_api__Destinations__stable__Address = "http://your-api-inner-host:8080/"
+$env:ReverseProxy__Clusters__miniadmin_api__Destinations__canary__Address = "http://your-api-inner-host:8080/"
 ```
 
 网关默认暴露：
 
 - `/health`：网关自身健康检查。
 - `/api/**`：转发到 API，并移除 `/api` 前缀。
+- `/.well-known/**`、`/connect/**`：原样转发 OAuth2/OIDC 协议端点。
 
 更多说明见 [网关与微服务演进](./gateway-microservices.md)。
 
@@ -82,6 +84,8 @@ docs-site/.vitepress/dist
 
 仓库提供了 `docker-compose.yml`、`Dockerfile.api`、`Dockerfile.gateway`、前端 Nginx 镜像配置和 `.env.example`。它适合本机体验、内网演示和小规模部署基线：
 
+如果服务器能访问 Gitee，只需上传根目录的 `mini-admin-server-install.sh`，按[单脚本服务器安装](./server-install-script.md)执行。脚本会获取 `main`、保留服务器数据并调用正式部署器。
+
 ```bash
 bash deploy.sh
 ```
@@ -105,6 +109,14 @@ docker compose up -d --build
 ```
 
 上线前必须修改 `.env` 中的 JWT、MySQL、Redis 密码，并把 `.env` 保留在服务器本地，不要提交到仓库。完整说明见 [Docker Compose 指南](./docker-compose.md)。
+
+使用域名时还必须配置对外来源和 OIDC 发行者，二者保持相同并带尾部 `/`：
+
+```bash
+MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/
+MINIADMIN_OPEN_PLATFORM_ISSUER=https://admin.example.com/
+MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=false
+```
 
 ## 接口限流配置
 
@@ -165,9 +177,9 @@ RateLimiting__UploadPermitLimit=4
 
 ## 文件存储准备
 
-MiniAdmin 抽象了文件存储，当前可使用本地存储或 MinIO。
+MiniAdmin 抽象了文件存储，当前支持 Local、S3、阿里云 OSS、腾讯云 COS 和 MinIO。
 
-本地存储适合开发和小规模部署。生产环境更推荐对象存储或 MinIO，并确认：
+本地存储适合开发和小规模部署。生产环境更推荐云对象存储或 MinIO，并确认：
 
 - 存储路径或桶存在。
 - 服务账号有读写权限。
@@ -196,5 +208,8 @@ MiniAdmin 抽象了文件存储，当前可使用本地存储或 MinIO。
 - 消息中心站内信、模板、策略、订阅和投递记录。
 - 审计日志、登录日志、系统监控。
 - 文件上传和下载。
+- 平台内核 ABAC、缓存管理和 Scalar 文档。
+- OAuth2/OIDC 发现文档、第三方应用和个人 OpenAPI 凭证。
+- 网关 TraceId、限流、灰度默认回退和熔断恢复。
 
 详细清单见 [验收清单](../runbooks/acceptance.md)。

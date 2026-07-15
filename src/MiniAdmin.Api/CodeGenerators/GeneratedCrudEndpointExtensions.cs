@@ -3,7 +3,7 @@ using MiniAdmin.Application.Contracts.CodeGenerators;
 
 namespace MiniAdmin.Api.CodeGenerators;
 
-public interface IGeneratedCrudEndpointDefinition
+public interface IGeneratedTransportEndpointDefinition
 {
     void MapEndpoints(IEndpointRouteBuilder endpoints);
 }
@@ -21,19 +21,19 @@ public static class GeneratedCrudEndpointExtensions
         return services;
     }
 
-    public static IEndpointRouteBuilder MapGeneratedCrudEndpoints(this IEndpointRouteBuilder endpoints)
+    public static IEndpointRouteBuilder MapGeneratedTransportEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var endpointDefinitions = typeof(Program).Assembly
             .GetTypes()
             .Where(type =>
                 !type.IsAbstract &&
-                typeof(IGeneratedCrudEndpointDefinition).IsAssignableFrom(type))
+                typeof(IGeneratedTransportEndpointDefinition).IsAssignableFrom(type))
             .OrderBy(type => type.FullName, StringComparer.Ordinal)
             .ToArray();
 
         foreach (var endpointDefinitionType in endpointDefinitions)
         {
-            var endpointDefinition = (IGeneratedCrudEndpointDefinition)ActivatorUtilities.CreateInstance(
+            var endpointDefinition = (IGeneratedTransportEndpointDefinition)ActivatorUtilities.CreateInstance(
                 endpoints.ServiceProvider,
                 endpointDefinitionType);
             endpointDefinition.MapEndpoints(endpoints);

@@ -37,6 +37,7 @@ bash deploy.sh
 
 | 文件 | 作用 |
 | --- | --- |
+| `mini-admin-server-install.sh` | 单独上传到服务器，从 Gitee 安装或安全更新 `main` 后执行部署 |
 | `deploy.sh` | 服务器一键入口 |
 | `scripts/deploy-mini-admin.sh` | 部署、重试、健康检查和故障诊断实现 |
 | `scripts/package-server.ps1` | 在 Windows 本机生成安全的服务器上传包 |
@@ -47,6 +48,8 @@ bash deploy.sh
 | `frontend/vue-vben-admin/apps/web-antd/Dockerfile` | 构建前端并用 Nginx 托管 |
 
 ## 服务器可访问代码仓库
+
+如果只想先上传一个文件，优先使用 [单脚本服务器安装](./server-install-script.md)。它会从 Gitee 克隆或安全更新仓库，再自动调用本页的 `deploy.sh`。
 
 进入项目目录后执行：
 
@@ -107,6 +110,7 @@ bash deploy.sh
 6. 启动 API，最多等待 8 分钟完成迁移和初始化。
 7. 启动 Gateway 和 Web。
 8. 验证 API、Gateway、Web 以及 `/api/health` 完整代理链路。
+9. 验证经 Web 入口访问 OIDC 发现文档。
 
 常用参数：
 
@@ -154,6 +158,31 @@ MINIADMIN_WEB_PORT=127.0.0.1:5666
 ```bash
 bash deploy.sh
 ```
+
+同时把 `.env` 中的公网来源配置为该 HTTPS 域名，保留尾部 `/`：
+
+```text
+MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/
+MINIADMIN_OPEN_PLATFORM_ISSUER=https://admin.example.com/
+MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=false
+```
+
+API 会在持久化上传卷中生成 OIDC RSA 签名证书。不要删除该卷；多 API 实例部署时必须共享同一证书。
+
+## 灰度与网关治理
+
+单实例部署无需开启灰度，稳定和灰度目标默认都指向 `api:8080`。部署第二个 API 实例后再设置：
+
+```text
+MINIADMIN_GATEWAY_CANARY_ENABLED=true
+MINIADMIN_GATEWAY_CANARY_PERCENTAGE=10
+MINIADMIN_CANARY_API_ADDRESS=http://api-canary:8080/
+MINIADMIN_GATEWAY_CIRCUIT_BREAKER_ENABLED=true
+MINIADMIN_GATEWAY_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+MINIADMIN_GATEWAY_CIRCUIT_BREAKER_BREAK_SECONDS=30
+```
+
+请求会携带并返回 `X-Trace-Id`。灰度目标未准备好时不要只修改比例，否则网关会把部分流量发送到不可达地址。
 
 ## 国内镜像与网络配置
 
@@ -267,5 +296,6 @@ ss -lntp | grep -E ':5666|:8080|:8088'
 - 首次登录后立即修改 `admin` 和 `demo` 默认密码。
 - `.env` 权限应为 `600`，不要上传到 Git 或发送给他人。
 - 生产环境通过 1Panel/Nginx 启用 HTTPS，只公开 80/443。
+- HTTPS 部署必须关闭 `MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP`，并确认 OIDC 发现文档中的 issuer 是公网域名。
 - 定期备份 `miniadmin_mysql` 和 `miniadmin_uploads`。
 - 更新前先备份数据库，更新后检查 `docker compose ps` 和 API 日志。

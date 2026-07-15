@@ -92,7 +92,9 @@ public sealed record NotificationTemplateDto(
     bool IsEnabled,
     string? Remark,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid? TenantId = null,
+    bool IsTenantOverride = false);
 
 public sealed record SaveNotificationTemplateRequest(
     string Name,
@@ -227,6 +229,20 @@ public interface IUserNotificationRepository
 
     Task<int> DeleteAllAsync(
         Guid userId,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IRealtimeNotificationPublisher
+{
+    Task PublishCreatedAsync(
+        Guid userId,
+        IReadOnlyList<UserNotificationDto> notifications,
+        int unreadCount,
+        CancellationToken cancellationToken = default);
+
+    Task PublishUnreadCountAsync(
+        Guid userId,
+        int unreadCount,
         CancellationToken cancellationToken = default);
 }
 

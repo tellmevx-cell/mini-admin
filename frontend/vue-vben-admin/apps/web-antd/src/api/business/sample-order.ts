@@ -38,19 +38,28 @@ export interface WithdrawSampleOrderWorkflowParams {
 }
 
 export async function getSampleOrderListApi(params: Record<string, unknown>) {
-  return requestClient.get<SampleOrderListResult>('/business/sample-order/list', { params });
+  return requestClient.get<SampleOrderListResult>('/business/sample-order/list', {
+    params,
+    responseReturn: 'body',
+  });
 }
 
 export async function createSampleOrderApi(data: SaveSampleOrderParams) {
-  return requestClient.post<SampleOrderItem>('/business/sample-order', data);
+  return requestClient.post<SampleOrderItem>('/business/sample-order', data, {
+    responseReturn: 'body',
+  });
 }
 
 export async function updateSampleOrderApi(id: string, data: SaveSampleOrderParams) {
-  return requestClient.put<SampleOrderItem>(`/business/sample-order/${id}`, data);
+  return requestClient.put<SampleOrderItem>(`/business/sample-order/${id}`, data, {
+    responseReturn: 'body',
+  });
 }
 
 export async function deleteSampleOrderApi(id: string) {
-  return requestClient.delete<boolean>(`/business/sample-order/${id}`);
+  return requestClient.delete<boolean>(`/business/sample-order/${id}`, {
+    responseReturn: 'body',
+  });
 }
 
 export async function submitSampleOrderWorkflowApi(
@@ -60,6 +69,7 @@ export async function submitSampleOrderWorkflowApi(
   return requestClient.post<SampleOrderItem>(
     `/business/sample-order/${id}/submit-workflow`,
     data,
+    { responseReturn: 'body' },
   );
 }
 
@@ -70,5 +80,6 @@ export async function withdrawSampleOrderWorkflowApi(
   return requestClient.post<SampleOrderItem>(
     `/business/sample-order/${id}/withdraw-workflow`,
     data,
+    { responseReturn: 'body' },
   );
 }

@@ -5,7 +5,10 @@ export interface SystemMonitorOverview {
   application: SystemMonitorApplication;
   cpu: SystemMonitorCpu;
   dependencies: SystemMonitorDependency[];
+  disks: SystemMonitorDisk[];
+  hardware: SystemMonitorHardware;
   memory: SystemMonitorMemory;
+  networks: SystemMonitorNetwork[];
   recent: SystemMonitorRecent;
   server: SystemMonitorServer;
 }
@@ -37,9 +40,47 @@ export interface SystemMonitorMemory {
 export interface SystemMonitorApplication {
   contentRootPath: string;
   environment: string;
+  garbageCollectionLatencyMode: string;
+  is64BitProcess: boolean;
+  processArchitecture: string;
+  processId: number;
   runtimeVersion: string;
+  serverGarbageCollection: boolean;
   startedAt: string;
   uptimeSeconds: number;
+}
+
+export interface SystemMonitorHardware {
+  cpuModel: string;
+  gpus: string[];
+  manufacturer: string;
+  model: string;
+  motherboardManufacturer: string;
+  motherboardModel: string;
+}
+
+export interface SystemMonitorDisk {
+  availableBytes: number;
+  driveType: string;
+  fileSystem: string;
+  isReady: boolean;
+  name: string;
+  rootPath: string;
+  totalBytes: number;
+  usedBytes: number;
+  usedPercent: number;
+}
+
+export interface SystemMonitorNetwork {
+  addresses: string[];
+  bytesReceived: number;
+  bytesSent: number;
+  description: string;
+  interfaceType: string;
+  macAddress: string;
+  name: string;
+  speedBitsPerSecond: number;
+  status: string;
 }
 
 export interface SystemMonitorServer {

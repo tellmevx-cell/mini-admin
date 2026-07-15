@@ -1,22 +1,33 @@
 using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Dictionaries;
 using MiniAdmin.Domain.Entities;
+using MiniAdmin.Platform.Caching;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
-public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDictionaryRepository
+public sealed class EfDictionaryRepository(
+    MiniAdminDbContext dbContext,
+    IPlatformCache platformCache) : IDictionaryRepository
 {
     public async Task<IReadOnlyList<DictionaryTypeDto>> GetListAsync(
         CancellationToken cancellationToken = default)
     {
-        var types = await dbContext.DictionaryTypes
-            .AsNoTracking()
-            .Include(x => x.Items)
-            .OrderBy(x => x.Order)
-            .ThenBy(x => x.Code)
-            .ToArrayAsync(cancellationToken);
-
-        return types.Select(ToTypeDto).ToArray();
+        return await platformCache.GetOrCreateAsync<IReadOnlyList<DictionaryTypeDto>>(
+            "dictionaries",
+            "all",
+            tenantId: null,
+            ["dictionaries"],
+            async token =>
+            {
+                var types = await dbContext.DictionaryTypes
+                    .AsNoTracking()
+                    .Include(x => x.Items)
+                    .OrderBy(x => x.Order)
+                    .ThenBy(x => x.Code)
+                    .ToArrayAsync(token);
+                return types.Select(ToTypeDto).ToArray();
+            },
+            cancellationToken: cancellationToken) ?? [];
     }
 
     public async Task<DictionaryTypeDto> CreateTypeAsync(
@@ -34,6 +45,7 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
 
         dbContext.DictionaryTypes.Add(type);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateCacheAsync(cancellationToken);
 
         return ToTypeDto(type);
     }
@@ -56,6 +68,7 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
         type.Order = request.Order;
         type.IsEnabled = request.IsEnabled;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateCacheAsync(cancellationToken);
 
         return ToTypeDto(type);
     }
@@ -76,6 +89,7 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
 
         dbContext.DictionaryTypes.Remove(type);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateCacheAsync(cancellationToken);
 
         return true;
     }
@@ -97,6 +111,7 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
 
         dbContext.DictionaryItems.Add(item);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateCacheAsync(cancellationToken);
 
         return ToItemDto(item);
     }
@@ -119,6 +134,7 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
         item.Order = request.Order;
         item.IsEnabled = request.IsEnabled;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateCacheAsync(cancellationToken);
 
         return ToItemDto(item);
     }
@@ -133,6 +149,7 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
 
         dbContext.DictionaryItems.Remove(item);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await InvalidateCacheAsync(cancellationToken);
 
         return true;
     }
@@ -169,5 +186,13 @@ public sealed class EfDictionaryRepository(MiniAdminDbContext dbContext) : IDict
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private Task InvalidateCacheAsync(CancellationToken cancellationToken)
+    {
+        return platformCache.InvalidateTagsAsync(
+            tenantId: null,
+            ["dictionaries"],
+            cancellationToken);
     }
 }
