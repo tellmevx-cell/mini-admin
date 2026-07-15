@@ -1,12 +1,53 @@
+<p align="center">
+  <img src="./docs-site/public/logo.svg" width="96" alt="MiniAdmin Logo" />
+</p>
+
 # MiniAdmin
 
-MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 SaaS 多租户、RBAC 权限、工作流审批、消息中心、审计日志、代码生成器、系统监控、YARP 网关和文档站整合在同一个开箱即用的工程里，适合作为中后台、内部运营平台、低代码业务平台或多租户管理系统的基础模板。
+企业级 SaaS 中后台基础平台。后端基于 .NET 10 与 ASP.NET Core，前端基于 Vue 3 与 Vben Admin，提供多租户、RBAC 权限、工作流、消息中心、审计、代码生成、事件总线、工作单元、网关和运维监控等开箱即用能力。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Gitee Star](https://gitee.com/baijincom/mini-admin/badge/star.svg)](https://gitee.com/baijincom/mini-admin/stargazers)
+[![GitHub Star](https://img.shields.io/github/stars/tellmevx-cell/mini-admin?style=flat&logo=github)](https://github.com/tellmevx-cell/mini-admin)
 [![CI](https://github.com/tellmevx-cell/mini-admin/actions/workflows/ci.yml/badge.svg)](https://github.com/tellmevx-cell/mini-admin/actions/workflows/ci.yml)
-[![Backend](https://img.shields.io/badge/.NET-10-blue.svg)](src/MiniAdmin.Api)
-[![Frontend](https://img.shields.io/badge/Vue-Vben%20Admin-42b883.svg)](frontend/vue-vben-admin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Backend](https://img.shields.io/badge/.NET-10-512bd4.svg)](src/MiniAdmin.Api)
+[![Frontend](https://img.shields.io/badge/Vue-3-42b883.svg)](frontend/vue-vben-admin)
 [![Docs](https://img.shields.io/badge/Docs-VitePress-646cff.svg)](docs-site)
+
+[功能总览](#功能概览) · [界面预览](#界面预览) · [快速开始](#快速开始) · [Docker 部署](docs-site/guide/docker-compose.md) · [二开文档](docs-site/index.md) · [参与贡献](CONTRIBUTING.md)
+
+## 简介
+
+MiniAdmin 采用前后端分离架构，后端按 `Domain / Application / Infrastructure / Api` 分层，前端由后端菜单动态驱动路由。项目不是只展示增删改查的示例模板，而是一套可以继续承载真实业务模块的后台基础工程。
+
+你可以保留完整平台能力直接开发业务，也可以按需裁剪租户、工作流、消息、网关等模块。默认使用 InMemory 和 Memory Cache 即可启动体验，生产环境可切换到 MySQL 与 Redis，并通过 Docker Compose 在 Linux 或 1Panel 服务器上一键部署。
+
+**适用场景**
+
+- 企业内部管理后台、运营平台和数据管理系统。
+- SaaS 多租户产品、客户工作台和平台管理端。
+- 带审批、抄送、催办和消息通知的流程型业务。
+- 需要快速生成 CRUD，再逐步沉淀领域逻辑的业务系统。
+- .NET 10 + Vue 3 前后端分离项目的学习、验证和二开底座。
+
+## 界面预览
+
+<table>
+  <tr>
+    <td align="center"><img src="./docs-site/features/screenshots/01-dashboard.png" alt="分析页" /><br />分析页</td>
+    <td align="center"><img src="./docs-site/features/screenshots/02-workflow-center.png" alt="审批中心" /><br />审批中心</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./docs-site/features/screenshots/03-message-center.png" alt="消息中心" /><br />消息中心</td>
+    <td align="center"><img src="./docs-site/features/screenshots/04-tenant.png" alt="租户管理" /><br />租户管理</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="./docs-site/features/screenshots/09-code-generator.png" alt="代码生成" /><br />代码生成</td>
+    <td align="center"><img src="./docs-site/features/screenshots/13-monitor.png" alt="系统监控" /><br />系统监控</td>
+  </tr>
+</table>
+
+仓库内已提供 20 张真实功能截图，详见 [功能截图展示](docs-site/features/showcase.md)。所有截图都可以通过 `pnpm screenshots:features` 在本地重新生成。
 
 ## 为什么选择 MiniAdmin
 
@@ -29,6 +70,51 @@ MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 Saa
 | 前端 | Vue 3, Vben Admin, Ant Design Vue, Pinia, Vite |
 | 文档 | VitePress |
 | 测试 | xUnit, WebApplicationFactory |
+
+## 架构
+
+MiniAdmin 保持模块边界清晰，同时避免在项目早期引入不必要的分布式复杂度。当前可以作为模块化单体部署；业务规模扩大后，可通过独立的 YARP 网关逐步拆分服务。
+
+```text
+Browser
+   |
+   +-- Web: Vue 3 + Vben Admin + Ant Design Vue
+   |
+   +-- Gateway: YARP reverse proxy + rate limiting (optional)
+           |
+           +-- Api: authentication, authorization and endpoints
+                   |
+                   +-- Application: use cases and orchestration
+                   +-- Domain: entities, rules and domain events
+                   +-- Infrastructure: EF Core, cache, files and jobs
+                           |
+                           +-- MySQL / InMemory
+                           +-- Redis / Memory Cache
+```
+
+| 项目 | 职责 |
+| --- | --- |
+| `MiniAdmin.Domain.Shared` | 领域共享常量、枚举和基础约定 |
+| `MiniAdmin.Domain` | 实体、领域规则、仓储抽象和领域事件 |
+| `MiniAdmin.Application.Contracts` | DTO、应用服务接口和跨层契约 |
+| `MiniAdmin.Application` | 用例编排、权限校验和事务边界 |
+| `MiniAdmin.Infrastructure` | EF Core、缓存、文件、通知、任务和数据初始化 |
+| `MiniAdmin.Api` | HTTP API、认证授权、中间件和依赖注入入口 |
+| `MiniAdmin.Gateway` | 统一 API 入口、反向代理、健康检查和限流 |
+
+主要目录：
+
+```text
+mini-admin/
+|-- src/                         # .NET 后端与网关
+|-- frontend/vue-vben-admin/     # Vue 3 管理端
+|-- tests/MiniAdmin.Tests/       # 后端自动化测试
+|-- docs-site/                   # VitePress 使用与二开文档
+|-- docs/                        # 功能需求、设计和运行手册
+|-- scripts/                     # 部署、验证和截图脚本
+|-- docker-compose.yml           # 完整容器编排
+`-- deploy.sh                    # Linux / 1Panel 一键部署入口
+```
 
 ## 功能概览
 
@@ -98,6 +184,22 @@ pnpm screenshots:features
 - pnpm 11+
 - MySQL 可选，默认可以直接使用 InMemory 启动
 - Redis 可选，默认使用 Memory Cache
+
+### 获取代码
+
+国内网络推荐从 Gitee 克隆：
+
+```bash
+git clone https://gitee.com/baijincom/mini-admin.git
+cd mini-admin
+```
+
+也可以使用 GitHub：
+
+```bash
+git clone https://github.com/tellmevx-cell/mini-admin.git
+cd mini-admin
+```
 
 ### 启动后端
 
@@ -283,6 +385,11 @@ pnpm -F @vben/web-antd run typecheck
 - 改动目的和影响范围。
 - 是否包含数据库结构、权限码或菜单种子变更。
 - 如何验证。
+
+## 致谢
+
+- [Vben Admin](https://github.com/vbenjs/vue-vben-admin) 提供了成熟的 Vue 后台前端工程基础。
+- [XiHan.BasicApp](https://gitee.com/XiHanFun/XiHan.BasicApp) 的开源项目首页为 MiniAdmin 的介绍结构提供了参考。
 
 ## 许可证
 
