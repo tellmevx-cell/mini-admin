@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MiniAdmin.Api/MiniAdmin.Api.csproj" />
+    <Project Path="src/MiniAdmin.Gateway/MiniAdmin.Gateway.csproj" />
     <Project Path="src/MiniAdmin.Application.Contracts/MiniAdmin.Application.Contracts.csproj" />
     <Project Path="src/MiniAdmin.Application/MiniAdmin.Application.csproj" />
     <Project Path="src/MiniAdmin.Domain.Shared/MiniAdmin.Domain.Shared.csproj" />

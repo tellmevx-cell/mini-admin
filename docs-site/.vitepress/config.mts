@@ -35,6 +35,7 @@ export default defineConfig({
             { text: '快速开始', link: '/guide/quick-start' },
             { text: '一键部署', link: '/guide/docker-compose#一键部署脚本' },
             { text: 'Docker Compose', link: '/guide/docker-compose' },
+            { text: '网关与微服务', link: '/guide/gateway-microservices' },
             { text: '本地开发', link: '/guide/local-development' },
             { text: '部署上线', link: '/guide/deployment' },
           ],

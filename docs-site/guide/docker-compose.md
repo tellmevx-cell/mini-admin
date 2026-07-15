@@ -1,6 +1,6 @@
 # Docker Compose
 
-本页说明如何用 Docker Compose 一次性启动 MiniAdmin 的前端、后端、MySQL 和 Redis。
+本页说明如何用 Docker Compose 一次性启动 MiniAdmin 的前端、网关、后端、MySQL 和 Redis。
 
 这种方式适合：
 
@@ -15,10 +15,11 @@
 | 文件 | 作用 |
 | --- | --- |
 | `.env.example` | Compose 环境变量模板，不包含真实密钥 |
-| `docker-compose.yml` | 编排 MySQL、Redis、API、Web |
+| `docker-compose.yml` | 编排 MySQL、Redis、API、Gateway、Web |
 | `Dockerfile.api` | 构建并运行 ASP.NET Core API |
+| `Dockerfile.gateway` | 构建并运行 YARP 网关 |
 | `frontend/vue-vben-admin/apps/web-antd/Dockerfile` | 构建前端并用 Nginx 托管 |
-| `frontend/vue-vben-admin/apps/web-antd/nginx.conf` | 前端静态资源与 `/api` 反向代理配置 |
+| `frontend/vue-vben-admin/apps/web-antd/nginx.conf` | 前端静态资源与 `/api` 到网关的反向代理配置 |
 
 ## 准备环境变量
 
@@ -57,7 +58,7 @@ bash scripts/deploy-mini-admin.sh
 - 执行 `docker compose up -d --build --remove-orphans` 构建并启动。
 - 检查 API 健康地址和前端访问地址。
 
-默认情况下，脚本会把 API 端口绑定为 `127.0.0.1:8080`，只允许服务器本机访问；前端端口为 `5666`，用于浏览器访问或 1Panel 网站反向代理。
+默认情况下，脚本会把 API 端口绑定为 `127.0.0.1:8080`，网关端口绑定为 `127.0.0.1:8088`，只允许服务器本机访问；前端端口为 `5666`，用于浏览器访问或 1Panel 网站反向代理。
 
 常用参数：
 
@@ -75,7 +76,10 @@ bash scripts/deploy-mini-admin.sh --force-env
 bash scripts/deploy-mini-admin.sh --logs
 
 # 修改前端访问端口
-MINIADMIN_WEB_PORT=8088 bash scripts/deploy-mini-admin.sh
+MINIADMIN_WEB_PORT=8090 bash scripts/deploy-mini-admin.sh
+
+# 修改网关本机端口
+MINIADMIN_GATEWAY_PORT=127.0.0.1:8089 bash scripts/deploy-mini-admin.sh
 
 # 国内服务器前端依赖下载慢时，进一步降低并发并拉长超时
 MINIADMIN_PNPM_NETWORK_CONCURRENCY=2 MINIADMIN_PNPM_FETCH_TIMEOUT=900000 bash scripts/deploy-mini-admin.sh
@@ -111,7 +115,9 @@ docker compose ps
 
 ```text
 前端：http://localhost:5666
-后端健康检查：http://localhost:8080/health
+网关健康检查：http://localhost:8088/health
+API 代理检查：http://localhost:8088/api/health
+后端直连健康检查：http://localhost:8080/health
 ```
 
 默认账号：
@@ -135,6 +141,12 @@ docker compose logs -f
 
 ```powershell
 docker compose logs -f api
+```
+
+只看网关：
+
+```powershell
+docker compose logs -f gateway
 ```
 
 只看前端 Nginx：
@@ -182,16 +194,20 @@ MINIADMIN_REDIS_PASSWORD
 
 ### 前端能打开但接口失败
 
-前端容器会把 `/api/` 代理到 `mini-admin-api:8080`。检查 API 是否健康：
+前端容器会把 `/api/` 代理到 `gateway:8080`，网关再转发到 `api:8080`。检查服务是否健康：
 
 ```powershell
+docker compose ps gateway
 docker compose ps api
+docker compose logs gateway
 docker compose logs api
 ```
 
 也可以直接访问：
 
 ```text
+http://localhost:8088/health
+http://localhost:8088/api/health
 http://localhost:8080/health
 ```
 
@@ -236,6 +252,7 @@ docker compose up -d
 Compose 文件是可运行基线，不等于完整生产方案。生产环境建议补充：
 
 - HTTPS 证书和统一反向代理。
+- 网关端口、API 端口的内网绑定策略，公网尽量只暴露前端或上层反向代理。
 - 数据库和 Redis 的备份策略。
 - 日志采集和监控告警。
 - 更严格的 CORS、网络访问控制和密钥管理。

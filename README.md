@@ -1,6 +1,6 @@
 # MiniAdmin
 
-MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 SaaS 多租户、RBAC 权限、工作流审批、消息中心、审计日志、代码生成器、系统监控和文档站整合在同一个开箱即用的工程里，适合作为中后台、内部运营平台、低代码业务平台或多租户管理系统的基础模板。
+MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 SaaS 多租户、RBAC 权限、工作流审批、消息中心、审计日志、代码生成器、系统监控、YARP 网关和文档站整合在同一个开箱即用的工程里，适合作为中后台、内部运营平台、低代码业务平台或多租户管理系统的基础模板。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CI](https://github.com/tellmevx-cell/mini-admin/actions/workflows/ci.yml/badge.svg)](https://github.com/tellmevx-cell/mini-admin/actions/workflows/ci.yml)
@@ -16,12 +16,14 @@ MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 Saa
 - **SaaS 多租户**：支持平台租户、租户套餐、租户初始化模板、租户管理员开通和租户数据隔离。
 - **代码生成器**：支持从表结构生成可运行 CRUD，并沉淀生成历史、产物治理、回滚和工作流绑定能力。
 - **工程化完整**：包含测试、文档站、运行管理、定时任务、事件总线、工作单元和本地/生产配置说明。
+- **网关可演进**：内置 `MiniAdmin.Gateway`，基于 YARP 提供统一 `/api` 入口、健康检查和入口限流，为后续微服务拆分预留边界。
 
 ## 技术栈
 
 | 模块 | 技术 |
 | --- | --- |
 | 后端 | .NET 10, ASP.NET Core Minimal API, EF Core |
+| 网关 | YARP Reverse Proxy, ASP.NET Core RateLimiter |
 | 数据库 | 默认 InMemory，支持 MySQL |
 | 缓存 | Memory Cache，支持 Redis 并具备失败兜底 |
 | 前端 | Vue 3, Vben Admin, Ant Design Vue, Pinia, Vite |
@@ -58,6 +60,7 @@ MiniAdmin 是一个面向二次开发的企业级后台管理系统。它把 Saa
 - 定时任务、任务日志、系统监控看板和告警中心。
 - 项目运行管理，可在管理端查看服务、日志、构建和产物。
 - 本地事件总线和工作单元，便于扩展领域事件和事务边界。
+- MiniAdmin.Gateway 网关，支持 `/api` 统一代理、网关健康检查和入口限流。
 
 ### 代码生成与二开
 
@@ -134,7 +137,7 @@ http://localhost:5666
 
 ### Docker Compose 一键体验
 
-如果你希望同时启动 MySQL、Redis、后端 API 和前端静态站点，可以使用 Docker Compose：
+如果你希望同时启动 MySQL、Redis、后端 API、YARP 网关和前端静态站点，可以使用 Docker Compose：
 
 Linux / 1Panel 服务器推荐直接执行：
 
@@ -154,10 +157,29 @@ docker compose up -d --build
 
 ```text
 前端：http://localhost:5666
-后端：http://localhost:8080/health
+网关：http://localhost:8088/health
+API 代理：http://localhost:8088/api/health
+后端直连：http://localhost:8080/health
 ```
 
 完整说明见 [Docker Compose 指南](docs-site/guide/docker-compose.md)。
+
+### 可选启动网关
+
+本地开发时可以在 API 旁边启动网关：
+
+```powershell
+dotnet run --project src/MiniAdmin.Api/MiniAdmin.Api.csproj --urls http://localhost:5021
+dotnet run --project src/MiniAdmin.Gateway/MiniAdmin.Gateway.csproj --urls http://localhost:8088
+```
+
+网关访问：
+
+```text
+http://localhost:8088/api/health
+```
+
+详细说明见 [网关与微服务演进](docs-site/guide/gateway-microservices.md)。
 
 ## 使用 MySQL / Redis
 

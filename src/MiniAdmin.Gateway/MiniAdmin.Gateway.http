@@ -1,0 +1,9 @@
+@MiniAdmin_Gateway_HostAddress = http://localhost:8088
+
+GET {{MiniAdmin_Gateway_HostAddress}}/health
+Accept: application/json
+
+###
+
+GET {{MiniAdmin_Gateway_HostAddress}}/api/health
+Accept: application/json

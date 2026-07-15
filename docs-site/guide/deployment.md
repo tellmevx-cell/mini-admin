@@ -9,6 +9,7 @@ MiniAdmin 一般包含三类产物：
 | 产物 | 来源 | 说明 |
 | --- | --- | --- |
 | 后端 API | `src/MiniAdmin.Api` | ASP.NET Core 服务 |
+| 网关 | `src/MiniAdmin.Gateway` | YARP 统一入口和反向代理 |
 | 前端静态资源 | `frontend/vue-vben-admin/apps/web-antd` | Vben Ant Design Vue 应用 |
 | 文档站 | `docs-site` | VitePress 静态站点 |
 
@@ -24,6 +25,25 @@ dotnet publish src/MiniAdmin.Api/MiniAdmin.Api.csproj -c Release -o artifacts/ap
 - 生产配置通过环境变量、密钥服务或独立配置文件注入。
 - JWT 密钥、数据库连接、Redis、文件存储、邮件和 Webhook 配置完整。
 - 数据库迁移策略明确。
+
+## 网关发布
+
+```powershell
+dotnet publish src/MiniAdmin.Gateway/MiniAdmin.Gateway.csproj -c Release -o artifacts/gateway
+```
+
+默认开发上游是 `http://localhost:5021/`。生产环境建议通过环境变量指定 API 地址：
+
+```powershell
+$env:ReverseProxy__Clusters__miniadmin_api__Destinations__api__Address = "http://your-api-inner-host:8080/"
+```
+
+网关默认暴露：
+
+- `/health`：网关自身健康检查。
+- `/api/**`：转发到 API，并移除 `/api` 前缀。
+
+更多说明见 [网关与微服务演进](./gateway-microservices.md)。
 
 ## 前端构建
 
@@ -60,7 +80,7 @@ docs-site/.vitepress/dist
 
 ## Docker Compose 部署
 
-仓库提供了 `docker-compose.yml`、`Dockerfile.api`、前端 Nginx 镜像配置和 `.env.example`。它适合本机体验、内网演示和小规模部署基线：
+仓库提供了 `docker-compose.yml`、`Dockerfile.api`、`Dockerfile.gateway`、前端 Nginx 镜像配置和 `.env.example`。它适合本机体验、内网演示和小规模部署基线：
 
 ```bash
 bash scripts/deploy-mini-admin.sh
@@ -80,7 +100,19 @@ docker compose up -d --build
 
 ## 接口限流配置
 
-MiniAdmin 后端内置 ASP.NET Core RateLimiter，用于保护后台接口、登录接口和文件上传接口。
+MiniAdmin 现在有两层限流：网关层和 API 层。
+
+网关层保护统一入口，默认配置位于 `src/MiniAdmin.Gateway/appsettings.json`。它主要负责全局请求限流和登录接口限流。Docker 环境可以用这些变量覆盖：
+
+```bash
+MINIADMIN_GATEWAY_RATE_LIMITING_ENABLED=true
+MINIADMIN_GATEWAY_RATE_LIMITING_PERMIT_LIMIT=1200
+MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS=60
+MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT=20
+MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS=60
+```
+
+API 层内置 ASP.NET Core RateLimiter，用于保护后台接口、登录接口和文件上传接口，是绕过网关或内部调用时的应用层兜底。
 
 默认配置位于 `src/MiniAdmin.Api/appsettings.json`：
 
@@ -109,7 +141,7 @@ RateLimiting__LoginWindowSeconds=60
 RateLimiting__UploadPermitLimit=4
 ```
 
-如果前面还有 Nginx、CDN 或 1Panel 反向代理，建议同时在网关层配置基础限流。后端限流是应用层兜底，登录前主要按远端 IP 限流，登录后按用户限流。
+如果前面还有 Nginx、CDN 或 1Panel 反向代理，建议保留网关限流，并在最外层代理补充基础访问频率限制。API 层限流是应用层兜底，登录前主要按远端 IP 限流，登录后按用户限流。
 
 ## 数据库准备
 

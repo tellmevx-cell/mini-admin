@@ -65,6 +65,28 @@ services:
     volumes:
       - uploads:/app/storage/uploads
 
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    image: mini-admin-gateway:local
+    container_name: mini-admin-gateway
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ReverseProxy__Clusters__miniadmin_api__Destinations__api__Address: http://api:8080/
+      RateLimiting__Enabled: "${MINIADMIN_GATEWAY_RATE_LIMITING_ENABLED:-true}"
+      RateLimiting__PermitLimit: "${MINIADMIN_GATEWAY_RATE_LIMITING_PERMIT_LIMIT:-1200}"
+      RateLimiting__WindowSeconds: "${MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS:-60}"
+      RateLimiting__LoginPermitLimit: "${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT:-20}"
+      RateLimiting__LoginWindowSeconds: "${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS:-60}"
+    ports:
+      - "${MINIADMIN_GATEWAY_PORT:-8088}:8080"
+
   web:
     build:
       context: frontend/vue-vben-admin
@@ -79,7 +101,7 @@ services:
     container_name: mini-admin-web
     restart: unless-stopped
     depends_on:
-      api:
+      gateway:
         condition: service_healthy
     ports:
       - "${MINIADMIN_WEB_PORT:-5666}:80"

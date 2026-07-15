@@ -4,6 +4,7 @@ set -Eeuo pipefail
 APP_NAME="MiniAdmin"
 DEFAULT_WEB_PORT="5666"
 DEFAULT_API_BIND="127.0.0.1:8080"
+DEFAULT_GATEWAY_BIND="127.0.0.1:8088"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -30,11 +31,12 @@ Options:
 Environment overrides:
   MINIADMIN_WEB_PORT=5666
   MINIADMIN_HTTP_PORT=127.0.0.1:8080
+  MINIADMIN_GATEWAY_PORT=127.0.0.1:8088
 
 Examples:
   bash scripts/deploy-mini-admin.sh
   bash scripts/deploy-mini-admin.sh --pull
-  MINIADMIN_WEB_PORT=8088 bash scripts/deploy-mini-admin.sh
+  MINIADMIN_WEB_PORT=8090 bash scripts/deploy-mini-admin.sh
 EOF
 }
 
@@ -122,6 +124,7 @@ has_placeholder_env() {
 write_env_file() {
   local web_port="${MINIADMIN_WEB_PORT:-$DEFAULT_WEB_PORT}"
   local api_bind="${MINIADMIN_HTTP_PORT:-$DEFAULT_API_BIND}"
+  local gateway_bind="${MINIADMIN_GATEWAY_PORT:-$DEFAULT_GATEWAY_BIND}"
   local jwt_key mysql_password mysql_root_password redis_password
 
   jwt_key="$(random_hex 40)"
@@ -131,7 +134,14 @@ write_env_file() {
 
   cat > "$ENV_FILE" <<EOF
 MINIADMIN_HTTP_PORT=${api_bind}
+MINIADMIN_GATEWAY_PORT=${gateway_bind}
 MINIADMIN_WEB_PORT=${web_port}
+
+MINIADMIN_GATEWAY_RATE_LIMITING_ENABLED=${MINIADMIN_GATEWAY_RATE_LIMITING_ENABLED:-true}
+MINIADMIN_GATEWAY_RATE_LIMITING_PERMIT_LIMIT=${MINIADMIN_GATEWAY_RATE_LIMITING_PERMIT_LIMIT:-1200}
+MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS=${MINIADMIN_GATEWAY_RATE_LIMITING_WINDOW_SECONDS:-60}
+MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT=${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_PERMIT_LIMIT:-20}
+MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS=${MINIADMIN_GATEWAY_LOGIN_RATE_LIMITING_WINDOW_SECONDS:-60}
 
 MINIADMIN_NPM_REGISTRY=${MINIADMIN_NPM_REGISTRY:-https://registry.npmmirror.com}
 MINIADMIN_PNPM_FETCH_TIMEOUT=${MINIADMIN_PNPM_FETCH_TIMEOUT:-600000}
@@ -246,14 +256,17 @@ deploy() {
   log "Current containers:"
   compose ps
 
-  local api_bind web_bind api_port web_port server_ip
+  local api_bind gateway_bind web_bind api_port gateway_port web_port server_ip
   api_bind="$(load_env_value MINIADMIN_HTTP_PORT "$DEFAULT_API_BIND")"
+  gateway_bind="$(load_env_value MINIADMIN_GATEWAY_PORT "$DEFAULT_GATEWAY_BIND")"
   web_bind="$(load_env_value MINIADMIN_WEB_PORT "$DEFAULT_WEB_PORT")"
   api_port="$(parse_port "$api_bind")"
+  gateway_port="$(parse_port "$gateway_bind")"
   web_port="$(parse_port "$web_bind")"
   server_ip="$(detect_server_ip)"
 
   wait_for_http "http://127.0.0.1:${api_port}/health" "API health" 80 || true
+  wait_for_http "http://127.0.0.1:${gateway_port}/health" "Gateway health" 80 || true
   wait_for_http "http://127.0.0.1:${web_port}" "Web" 80 || true
 
   cat <<EOF
@@ -261,8 +274,9 @@ deploy() {
 Deployment finished.
 
 Visit:
-  Web:        http://${server_ip}:${web_port}
-  API health: http://127.0.0.1:${api_port}/health
+  Web:            http://${server_ip}:${web_port}
+  Gateway health: http://127.0.0.1:${gateway_port}/health
+  API health:     http://127.0.0.1:${api_port}/health
 
 Default accounts:
   Platform admin: tenant blank, username admin, password 123456
@@ -275,6 +289,7 @@ Important:
 Useful commands:
   cd ${APP_DIR}
   docker compose ps
+  docker compose logs -f gateway
   docker compose logs -f api
   docker compose logs -f web
   docker compose down
