@@ -63,11 +63,13 @@ bash deploy-mini-admin-docs.sh --domain docs.example.com
 
 ### 推荐：自动创建站点和证书
 
-脚本可以调用 1Panel v2 API，自动完成反向代理网站、Cloudflare DNS 账户、Let's Encrypt ACME 账户、证书申请、自动续签和 HTTPS 绑定。首次执行前准备两个最小权限凭证：
+脚本会自动识别 1Panel V2 或 V1 API，并使用对应的接口、签名算法和请求字段，自动完成反向代理网站、Cloudflare DNS 账户、Let's Encrypt ACME 账户、证书申请、自动续签和 HTTPS 绑定。首次执行前准备两个最小权限凭证：
 
 1. 在 1Panel 左下角用户菜单的 **API 接口** 中启用 API，IP 白名单加入 `127.0.0.1`，复制 API Key。
 2. 在 Cloudflare 的 **My Profile -> API Tokens** 使用 `Edit zone DNS` 模板创建 Token，并把资源范围限制到文档域名所在的单个 Zone。
 3. 不要使用 Cloudflare Global API Key，也不要把任何 Token 写进脚本或提交到 Git。
+
+> API Key、Token 或密码一旦出现在截图、聊天记录或公开日志中，应立即在对应平台重置，旧密钥不再继续使用。
 
 执行 `1pctl user-info` 可以查看 1Panel 的协议和端口。`--onepanel-url` 只填写协议、主机和端口，不包含安全入口路径：
 
@@ -81,7 +83,7 @@ bash deploy-mini-admin-docs.sh \
   --onepanel-url http://127.0.0.1:10086
 ```
 
-脚本随后会隐藏提示输入 `Cloudflare API Token` 和 `1Panel API Key`，它们不会出现在命令行参数或 shell history 中。如果 1Panel 只开放使用自签证书的 HTTPS 地址，改为：
+脚本会先探测 `/api/v2`，再回退 `/api/v1`，并隐藏提示输入 `Cloudflare API Token` 和 `1Panel API Key`，它们不会出现在命令行参数或 shell history 中。如果 1Panel 只开放使用自签证书的 HTTPS 地址，改为：
 
 ```bash
 bash deploy-mini-admin-docs.sh \
@@ -95,11 +97,30 @@ bash deploy-mini-admin-docs.sh \
 
 自动模式具有以下保护：
 
+- 在停止或替换现有文档容器之前完成 Cloudflare Token、1Panel API 版本和鉴权检查。
 - 域名不存在时创建指向 `http://127.0.0.1:8090` 的反向代理网站。
 - 域名已被非反向代理网站占用时停止，不覆盖原网站。
 - 现有代理目标不是当前文档站时停止，不静默修改代理地址。
 - 复用同域名的有效证书，并确保开启自动续签。
 - 证书申请失败时显示 1Panel 返回的错误，不输出 Cloudflare Token。
+
+通常不需要指定 API 版本。如果自动探测结果与实际不符，可显式追加 `--onepanel-api-version v1` 或 `--onepanel-api-version v2`。
+
+#### 1Panel API 排查
+
+出现“无法识别 1Panel API”时，脚本会同时显示 V2、V1 的 HTTP 状态与 Content-Type。可在服务器执行以下不包含密钥的命令：
+
+```bash
+1pctl version
+1pctl user-info
+date -Is
+timedatectl status
+```
+
+- `404` 或 `text/html`：通常是 1Panel 协议、端口填错，或请求到了普通网站；`--onepanel-url` 不能包含安全入口路径。
+- `401`、`403` 或 API 密钥错误：重置并重新复制 API Key，保存 API 配置，确认白名单包含 `127.0.0.1`。
+- 时间戳错误：启用 NTP，同步服务器时间后重试。API Key 有效期是允许的请求时间偏差，不代表密钥只使用这么久。
+- 服务器使用反向代理访问 1Panel 时，优先填写 `1pctl user-info` 显示的本机协议和端口，不要填写域名代理地址。
 
 CI 或非交互终端可以通过环境变量传入密钥。建议先隐藏读取，再导出，避免密钥进入历史：
 
@@ -217,6 +238,7 @@ nslookup docs.example.com
 相关官方资料：
 
 - [1Panel API 接口与 HMAC-SHA256 鉴权](https://1panel.cn/docs/v2/dev_manual/api_manual/)
+- [1Panel V1 API 与 MD5 鉴权](https://1panel.cn/docs/v1/dev_manual/api_manual/)
 - [1Panel DNS 账号模式申请证书](https://1panel.cn/docs/v2/user_manual/websites/certificate_create/)
 - [Cloudflare 创建最小权限 API Token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
 

@@ -16,6 +16,7 @@ CLOUDFLARE_EMAIL="${MINIADMIN_CLOUDFLARE_EMAIL:-}"
 CLOUDFLARE_TOKEN="${MINIADMIN_CLOUDFLARE_TOKEN:-}"
 ONEPANEL_URL="${MINIADMIN_1PANEL_URL:-}"
 ONEPANEL_API_KEY="${MINIADMIN_1PANEL_API_KEY:-}"
+ONEPANEL_API_VERSION="${MINIADMIN_1PANEL_API_VERSION:-auto}"
 ONEPANEL_INSECURE="${MINIADMIN_1PANEL_INSECURE:-0}"
 SSL_WAIT_SECONDS="${MINIADMIN_SSL_WAIT_SECONDS:-900}"
 
@@ -27,6 +28,11 @@ LIST_FILE=""
 VERBOSE_LIST_FILE=""
 DEPLOY_COMPLETE=0
 ONEPANEL_RESPONSE=""
+ONEPANEL_API_PREFIX=""
+ONEPANEL_AUTH_MODE=""
+ONEPANEL_HTTP_STATUS=""
+ONEPANEL_CONTENT_TYPE=""
+ONEPANEL_CURL_ERROR=""
 SENSITIVE_FILES=()
 WEBSITE_ID=""
 ACME_ACCOUNT_ID=""
@@ -53,6 +59,8 @@ MiniAdmin 文档站终端部署脚本
   --acme-email EMAIL Let's Encrypt 通知邮箱
   --cloudflare-email Cloudflare 账户邮箱
   --onepanel-url URL 1Panel 地址，例如 http://127.0.0.1:10086
+  --onepanel-api-version VERSION
+                     1Panel API 版本，支持 auto、v1、v2，默认 auto
   --onepanel-insecure
                      允许访问使用自签证书的 1Panel HTTPS 地址
   --ssl-timeout SEC  等待证书签发的秒数，默认 900
@@ -64,7 +72,8 @@ MiniAdmin 文档站终端部署脚本
   MINIADMIN_DOCS_CONTAINER、MINIADMIN_DOCS_AUTO_SSL
   MINIADMIN_ACME_EMAIL、MINIADMIN_CLOUDFLARE_EMAIL
   MINIADMIN_CLOUDFLARE_TOKEN、MINIADMIN_1PANEL_URL
-  MINIADMIN_1PANEL_API_KEY、MINIADMIN_1PANEL_INSECURE
+  MINIADMIN_1PANEL_API_KEY、MINIADMIN_1PANEL_API_VERSION
+  MINIADMIN_1PANEL_INSECURE
 
 安全说明：Cloudflare Token 和 1Panel API Key 不提供命令行参数。
 启用 --auto-ssl 且未设置环境变量时，脚本会在终端隐藏输入。
@@ -194,6 +203,11 @@ parse_args() {
         ONEPANEL_URL="$2"
         shift 2
         ;;
+      --onepanel-api-version)
+        [[ $# -ge 2 ]] || fail "--onepanel-api-version 缺少版本。"
+        ONEPANEL_API_VERSION="$2"
+        shift 2
+        ;;
       --onepanel-insecure)
         ONEPANEL_INSECURE=1
         shift
@@ -312,42 +326,65 @@ prepare_auto_ssl() {
   [[ "$SSL_WAIT_SECONDS" =~ ^[0-9]+$ ]] || fail "--ssl-timeout 必须是数字。"
   ((SSL_WAIT_SECONDS >= 60 && SSL_WAIT_SECONDS <= 3600)) || fail "--ssl-timeout 必须在 60-3600 秒之间。"
   [[ "$ONEPANEL_INSECURE" == "0" || "$ONEPANEL_INSECURE" == "1" ]] || fail "MINIADMIN_1PANEL_INSECURE 只支持 0 或 1。"
+  [[ "$ONEPANEL_API_VERSION" == "auto" || "$ONEPANEL_API_VERSION" == "v1" || "$ONEPANEL_API_VERSION" == "v2" ]] || fail "1Panel API 版本只支持 auto、v1 或 v2。"
 
   ONEPANEL_URL="${ONEPANEL_URL%/}"
   [[ "$ONEPANEL_URL" =~ ^https?://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$ ]] || fail "1Panel 地址只填写协议、主机和端口，不要包含安全入口路径：$ONEPANEL_URL"
+
+  detect_onepanel_api
+  verify_cloudflare_token
 }
 
 sign_onepanel_request() {
-  local timestamp="$1" signature=""
+  local timestamp="$1" auth_mode="${2:-$ONEPANEL_AUTH_MODE}" signature=""
   if command -v python3 >/dev/null 2>&1; then
-    signature="$(
-      ONEPANEL_HMAC_KEY="$ONEPANEL_API_KEY" \
-      ONEPANEL_HMAC_DATA="1panel:$timestamp" \
-        python3 -c 'import hashlib, hmac, os; print(hmac.new(os.environ["ONEPANEL_HMAC_KEY"].encode(), os.environ["ONEPANEL_HMAC_DATA"].encode(), hashlib.sha256).hexdigest())'
-    )"
+    if [[ "$auth_mode" == "md5" ]]; then
+      signature="$(
+        ONEPANEL_SIGNING_KEY="$ONEPANEL_API_KEY" \
+        ONEPANEL_SIGNING_TIMESTAMP="$timestamp" \
+          python3 -c 'import hashlib, os; print(hashlib.md5(("1panel" + os.environ["ONEPANEL_SIGNING_KEY"] + os.environ["ONEPANEL_SIGNING_TIMESTAMP"]).encode()).hexdigest())'
+      )"
+    else
+      signature="$(
+        ONEPANEL_HMAC_KEY="$ONEPANEL_API_KEY" \
+        ONEPANEL_HMAC_DATA="1panel:$timestamp" \
+          python3 -c 'import hashlib, hmac, os; print(hmac.new(os.environ["ONEPANEL_HMAC_KEY"].encode(), os.environ["ONEPANEL_HMAC_DATA"].encode(), hashlib.sha256).hexdigest())'
+      )"
+    fi
   else
-    signature="$(printf '1panel:%s' "$timestamp" | openssl dgst -sha256 -hmac "$ONEPANEL_API_KEY" | awk '{print $NF}')"
+    if [[ "$auth_mode" == "md5" ]]; then
+      signature="$(printf '1panel%s%s' "$ONEPANEL_API_KEY" "$timestamp" | openssl dgst -md5 | awk '{print $NF}')"
+    else
+      signature="$(printf '1panel:%s' "$timestamp" | openssl dgst -sha256 -hmac "$ONEPANEL_API_KEY" | awk '{print $NF}')"
+    fi
   fi
-  [[ "$signature" =~ ^[0-9a-fA-F]{64}$ ]] || fail "无法生成 1Panel API 签名。"
+  if [[ "$auth_mode" == "md5" ]]; then
+    [[ "$signature" =~ ^[0-9a-fA-F]{32}$ ]] || fail "无法生成 1Panel V1 API 签名。"
+  else
+    [[ "$signature" =~ ^[0-9a-fA-F]{64}$ ]] || fail "无法生成 1Panel V2 API 签名。"
+  fi
   printf '%s' "$signature"
 }
 
-onepanel_api() {
-  local method="$1" path="$2" body="${3:-}" timestamp signature curl_config response code message
+onepanel_request_raw() {
+  local api_prefix="$1" auth_mode="$2" method="$3" path="$4" body="${5:-}"
+  local timestamp signature curl_config response_file error_file metadata="" request_ok=0
+
   timestamp="$(date +%s)"
-  signature="$(sign_onepanel_request "$timestamp")"
+  signature="$(sign_onepanel_request "$timestamp" "$auth_mode")"
   curl_config="$(mktemp)"
-  chmod 600 "$curl_config"
-  SENSITIVE_FILES+=("$curl_config")
+  response_file="$(mktemp)"
+  error_file="$(mktemp)"
+  chmod 600 "$curl_config" "$response_file" "$error_file"
+  SENSITIVE_FILES+=("$curl_config" "$response_file" "$error_file")
 
   {
     printf 'silent\n'
-    printf 'show-error\n'
     printf 'compressed\n'
     printf 'connect-timeout = 10\n'
     printf 'max-time = 600\n'
     printf 'request = "%s"\n' "$method"
-    printf 'url = "%s/api/v2%s"\n' "$ONEPANEL_URL" "$path"
+    printf 'url = "%s%s%s"\n' "$ONEPANEL_URL" "$api_prefix" "$path"
     printf 'header = "Content-Type: application/json"\n'
     printf 'header = "1Panel-Timestamp: %s"\n' "$timestamp"
     printf 'header = "1Panel-Token: %s"\n' "$signature"
@@ -357,24 +394,130 @@ onepanel_api() {
   } >"$curl_config"
 
   if [[ "$method" == "GET" ]]; then
-    if ! response="$(curl --config "$curl_config")"; then
-      rm -f -- "$curl_config"
-      fail "无法连接 1Panel API：$ONEPANEL_URL"
+    if metadata="$(curl --config "$curl_config" --output "$response_file" --write-out $'%{http_code}\n%{content_type}' 2>"$error_file")"; then
+      request_ok=1
     fi
-  else
-    if ! response="$(printf '%s' "$body" | curl --config "$curl_config" --data-binary @-)"; then
-      rm -f -- "$curl_config"
-      fail "1Panel API 请求失败：$path"
-    fi
+  elif metadata="$(printf '%s' "$body" | curl --config "$curl_config" --data-binary @- --output "$response_file" --write-out $'%{http_code}\n%{content_type}' 2>"$error_file")"; then
+    request_ok=1
   fi
-  rm -f -- "$curl_config"
 
-  code="$(printf '%s' "$response" | jq -r '.code // empty' 2>/dev/null || true)"
-  if [[ "$code" != "200" ]]; then
-    message="$(printf '%s' "$response" | jq -r '.message // "响应格式不正确"' 2>/dev/null || printf '响应格式不正确')"
-    fail "1Panel API 返回失败（$path）：$message"
+  ONEPANEL_RESPONSE="$(<"$response_file")"
+  ONEPANEL_CURL_ERROR="$(tr '\r\n' '  ' <"$error_file")"
+  metadata="${metadata//$'\r'/}"
+  ONEPANEL_HTTP_STATUS="${metadata%%$'\n'*}"
+  if [[ "$metadata" == *$'\n'* ]]; then
+    ONEPANEL_CONTENT_TYPE="${metadata#*$'\n'}"
+  else
+    ONEPANEL_CONTENT_TYPE=""
   fi
-  ONEPANEL_RESPONSE="$response"
+  rm -f -- "$curl_config" "$response_file" "$error_file"
+  [[ "$request_ok" -eq 1 ]]
+}
+
+onepanel_probe_summary() {
+  local code message content_type
+  if [[ -n "$ONEPANEL_CURL_ERROR" ]]; then
+    printf '连接失败（%s）' "${ONEPANEL_CURL_ERROR:0:160}"
+    return
+  fi
+
+  content_type="${ONEPANEL_CONTENT_TYPE:-未知}"
+  if ! printf '%s' "$ONEPANEL_RESPONSE" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    printf 'HTTP %s，Content-Type %s，响应不是 JSON' "${ONEPANEL_HTTP_STATUS:-未知}" "$content_type"
+    return
+  fi
+
+  code="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.code // empty')"
+  message="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.message // empty' | tr '\r\n' '  ')"
+  printf 'HTTP %s，code %s' "${ONEPANEL_HTTP_STATUS:-未知}" "${code:-未知}"
+  if [[ -n "$message" ]]; then
+    printf '，%s' "${message:0:160}"
+  fi
+}
+
+set_onepanel_api_version() {
+  case "$1" in
+    v1)
+      ONEPANEL_API_VERSION="v1"
+      ONEPANEL_API_PREFIX="/api/v1"
+      ONEPANEL_AUTH_MODE="md5"
+      ;;
+    v2)
+      ONEPANEL_API_VERSION="v2"
+      ONEPANEL_API_PREFIX="/api/v2"
+      ONEPANEL_AUTH_MODE="hmac"
+      ;;
+    *) fail "不支持的 1Panel API 版本：$1" ;;
+  esac
+}
+
+detect_onepanel_api() {
+  local requested_version="$ONEPANEL_API_VERSION" version prefix mode summary
+  local v1_summary="未探测" v2_summary="未探测"
+  local probe_body='{"page":1,"pageSize":1,"name":"","orderBy":"created_at","order":"null","websiteGroupId":0,"type":""}'
+  local candidates=(v2 v1)
+
+  if [[ "$requested_version" != "auto" ]]; then
+    candidates=("$requested_version")
+  fi
+
+  log "探测 1Panel API 版本与鉴权配置。"
+  for version in "${candidates[@]}"; do
+    if [[ "$version" == "v2" ]]; then
+      prefix="/api/v2"
+      mode="hmac"
+    else
+      prefix="/api/v1"
+      mode="md5"
+    fi
+
+    if onepanel_request_raw "$prefix" "$mode" POST "/websites/search" "$probe_body" &&
+      [[ "$ONEPANEL_HTTP_STATUS" =~ ^2[0-9][0-9]$ ]] &&
+      [[ "$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.code // empty' 2>/dev/null || true)" == "200" ]]; then
+      set_onepanel_api_version "$version"
+      success "已识别 1Panel ${version^^} API（$ONEPANEL_API_PREFIX）。"
+      return
+    fi
+
+    summary="$(onepanel_probe_summary)"
+    if [[ "$version" == "v2" ]]; then
+      v2_summary="$summary"
+    else
+      v1_summary="$summary"
+    fi
+  done
+
+  if [[ "$requested_version" == "auto" ]]; then
+    fail "无法识别 1Panel API。V2：$v2_summary；V1：$v1_summary。请确认 --onepanel-url 是 1Panel 的协议、端口且不含安全入口，并检查 API Key、127.0.0.1 白名单以及服务器时间。"
+  fi
+  fail "1Panel ${requested_version^^} API 检查失败：$(onepanel_probe_summary)。可改用 --onepanel-api-version auto，或检查 URL、API Key、IP 白名单和服务器时间。"
+}
+
+onepanel_api() {
+  local method="$1" path="$2" body="${3:-}" code message diagnostic
+  if ! onepanel_request_raw "$ONEPANEL_API_PREFIX" "$ONEPANEL_AUTH_MODE" "$method" "$path" "$body"; then
+    fail "无法连接 1Panel API（$ONEPANEL_API_PREFIX$path）：${ONEPANEL_CURL_ERROR:-未知网络错误}"
+  fi
+
+  if ! [[ "$ONEPANEL_HTTP_STATUS" =~ ^2[0-9][0-9]$ ]]; then
+    diagnostic="$(onepanel_probe_summary)"
+    case "$ONEPANEL_HTTP_STATUS" in
+      301|302|307|308) diagnostic="$diagnostic；1Panel 地址发生跳转，请核对协议和端口" ;;
+      401|403) diagnostic="$diagnostic；请检查 API Key、IP 白名单、有效期和服务器时间" ;;
+      404) diagnostic="$diagnostic；API 路径不存在，请检查 1Panel 版本或端口" ;;
+    esac
+    fail "1Panel API 请求失败（$ONEPANEL_API_PREFIX$path）：$diagnostic"
+  fi
+
+  if ! printf '%s' "$ONEPANEL_RESPONSE" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    fail "1Panel API 返回 HTTP $ONEPANEL_HTTP_STATUS，但响应不是 JSON（Content-Type: ${ONEPANEL_CONTENT_TYPE:-未知}）。当前地址可能不是 1Panel 面板端口，或包含了错误的反向代理。"
+  fi
+
+  code="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.code // empty')"
+  if [[ "$code" != "200" ]]; then
+    message="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.message // "未返回错误信息"' | tr '\r\n' '  ')"
+    fail "1Panel API 返回失败（$ONEPANEL_API_PREFIX$path，code ${code:-未知}）：${message:0:240}。请检查 API Key、白名单、有效期和服务器时间。"
+  fi
 }
 
 verify_cloudflare_token() {
@@ -441,26 +584,48 @@ ensure_onepanel_website() {
     else
       task_id="miniadmin-docs-$(date +%s)-$$"
     fi
-    body="$(
-      jq -cn \
-        --arg alias "$alias" \
-        --arg domain "$DOMAIN" \
-        --arg proxy "$proxy_url" \
-        --arg taskId "$task_id" \
-        --argjson groupId "$group_id" \
-        '{
-          type: "proxy",
-          alias: $alias,
-          remark: "MiniAdmin documentation",
-          proxy: $proxy,
-          webSiteGroupID: $groupId,
-          IPV6: false,
-          domains: [{domain: $domain, port: 80, ssl: false}],
-          taskID: $taskId,
-          enableSSL: false,
-          websiteSSLID: 0
-        }'
-    )"
+    if [[ "$ONEPANEL_API_VERSION" == "v1" ]]; then
+      body="$(
+        jq -cn \
+          --arg alias "$alias" \
+          --arg domain "$DOMAIN" \
+          --arg proxy "$proxy_url" \
+          --argjson groupId "$group_id" \
+          '{
+            primaryDomain: $domain,
+            otherDomains: "",
+            type: "proxy",
+            alias: $alias,
+            remark: "MiniAdmin documentation",
+            proxy: $proxy,
+            webSiteGroupID: $groupId,
+            appType: "installed",
+            IPV6: false
+          }'
+      )"
+    else
+      body="$(
+        jq -cn \
+          --arg alias "$alias" \
+          --arg domain "$DOMAIN" \
+          --arg proxy "$proxy_url" \
+          --arg taskId "$task_id" \
+          --argjson groupId "$group_id" \
+          '{
+            type: "proxy",
+            alias: $alias,
+            remark: "MiniAdmin documentation",
+            proxy: $proxy,
+            webSiteGroupID: $groupId,
+            appType: "installed",
+            IPV6: false,
+            domains: [{domain: $domain, port: 80, ssl: false}],
+            taskID: $taskId,
+            enableSSL: false,
+            websiteSSLID: 0
+          }'
+      )"
+    fi
     onepanel_api POST "/websites" "$body"
     find_onepanel_website
     [[ "$WEBSITE_ID" =~ ^[0-9]+$ ]] || fail "1Panel 网站创建完成，但无法查询到 $DOMAIN。"
@@ -477,7 +642,10 @@ ensure_onepanel_website() {
 }
 
 ensure_onepanel_acme_account() {
-  local body
+  local body key_type="EC256"
+  if [[ "$ONEPANEL_API_VERSION" == "v1" ]]; then
+    key_type="P256"
+  fi
   onepanel_api POST "/websites/acme/search" '{"page":1,"pageSize":100}'
   ACME_ACCOUNT_ID="$(
     printf '%s' "$ONEPANEL_RESPONSE" |
@@ -487,10 +655,10 @@ ensure_onepanel_acme_account() {
   if [[ -z "$ACME_ACCOUNT_ID" ]]; then
     log "创建 1Panel Let's Encrypt ACME 账户。"
     body="$(
-      jq -cn --arg email "$ACME_EMAIL" '{
+      jq -cn --arg email "$ACME_EMAIL" --arg keyType "$key_type" '{
         email: $email,
         type: "letsencrypt",
-        keyType: "EC256",
+        keyType: $keyType,
         eabKid: "",
         eabHmacKey: "",
         useProxy: false,
@@ -550,10 +718,14 @@ ensure_onepanel_dns_account() {
 }
 
 certificate_request_body() {
-  local id="${1:-0}"
+  local id="${1:-0}" key_type="EC256"
+  if [[ "$ONEPANEL_API_VERSION" == "v1" ]]; then
+    key_type="P256"
+  fi
   jq -cn \
     --argjson id "$id" \
     --arg domain "$DOMAIN" \
+    --arg keyType "$key_type" \
     --argjson acmeId "$ACME_ACCOUNT_ID" \
     --argjson dnsId "$DNS_ACCOUNT_ID" \
     '{
@@ -564,7 +736,7 @@ certificate_request_body() {
       acmeAccountId: $acmeId,
       dnsAccountId: $dnsId,
       autoRenew: true,
-      keyType: "EC256",
+      keyType: $keyType,
       apply: true,
       pushDir: false,
       dir: "",
@@ -679,7 +851,6 @@ attach_onepanel_certificate() {
 configure_auto_ssl() {
   [[ "$AUTO_SSL" -eq 1 ]] || return
   log "开始配置 1Panel 与 Let's Encrypt 自动 HTTPS。"
-  verify_cloudflare_token
   ensure_onepanel_website
   ensure_onepanel_acme_account
   ensure_onepanel_dns_account
