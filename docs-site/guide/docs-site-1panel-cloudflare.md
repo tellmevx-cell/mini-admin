@@ -61,6 +61,63 @@ bash deploy-mini-admin-docs.sh --domain docs.example.com
 - 只监听 `127.0.0.1:8090`，不直接开放公网端口。
 - 执行 Nginx 配置检查和 HTTP 健康检查；失败时恢复上一版本。
 
+### 推荐：自动创建站点和证书
+
+脚本可以调用 1Panel v2 API，自动完成反向代理网站、Cloudflare DNS 账户、Let's Encrypt ACME 账户、证书申请、自动续签和 HTTPS 绑定。首次执行前准备两个最小权限凭证：
+
+1. 在 1Panel 左下角用户菜单的 **API 接口** 中启用 API，IP 白名单加入 `127.0.0.1`，复制 API Key。
+2. 在 Cloudflare 的 **My Profile -> API Tokens** 使用 `Edit zone DNS` 模板创建 Token，并把资源范围限制到文档域名所在的单个 Zone。
+3. 不要使用 Cloudflare Global API Key，也不要把任何 Token 写进脚本或提交到 Git。
+
+执行 `1pctl user-info` 可以查看 1Panel 的协议和端口。`--onepanel-url` 只填写协议、主机和端口，不包含安全入口路径：
+
+```bash
+cd /root/mini-admin-docs-upload
+bash deploy-mini-admin-docs.sh \
+  --domain docs.example.com \
+  --auto-ssl \
+  --acme-email ops@example.com \
+  --cloudflare-email ops@example.com \
+  --onepanel-url http://127.0.0.1:10086
+```
+
+脚本随后会隐藏提示输入 `Cloudflare API Token` 和 `1Panel API Key`，它们不会出现在命令行参数或 shell history 中。如果 1Panel 只开放使用自签证书的 HTTPS 地址，改为：
+
+```bash
+bash deploy-mini-admin-docs.sh \
+  --domain docs.example.com \
+  --auto-ssl \
+  --acme-email ops@example.com \
+  --cloudflare-email ops@example.com \
+  --onepanel-url https://127.0.0.1:10086 \
+  --onepanel-insecure
+```
+
+自动模式具有以下保护：
+
+- 域名不存在时创建指向 `http://127.0.0.1:8090` 的反向代理网站。
+- 域名已被非反向代理网站占用时停止，不覆盖原网站。
+- 现有代理目标不是当前文档站时停止，不静默修改代理地址。
+- 复用同域名的有效证书，并确保开启自动续签。
+- 证书申请失败时显示 1Panel 返回的错误，不输出 Cloudflare Token。
+
+CI 或非交互终端可以通过环境变量传入密钥。建议先隐藏读取，再导出，避免密钥进入历史：
+
+```bash
+read -rsp 'Cloudflare Token: ' MINIADMIN_CLOUDFLARE_TOKEN && echo
+read -rsp '1Panel API Key: ' MINIADMIN_1PANEL_API_KEY && echo
+export MINIADMIN_CLOUDFLARE_TOKEN MINIADMIN_1PANEL_API_KEY
+
+bash deploy-mini-admin-docs.sh \
+  --domain docs.example.com \
+  --auto-ssl \
+  --acme-email ops@example.com \
+  --cloudflare-email ops@example.com \
+  --onepanel-url http://127.0.0.1:10086
+
+unset MINIADMIN_CLOUDFLARE_TOKEN MINIADMIN_1PANEL_API_KEY
+```
+
 指定压缩包或端口的示例：
 
 ```bash
@@ -88,7 +145,9 @@ docker logs --tail=100 mini-admin-docs-site
 
 首页和文档地址应返回 `200`。无需在服务器防火墙中放行 8090。
 
-## 3. 在 1Panel 创建反向代理网站
+## 3. 在 1Panel 创建反向代理网站（手动模式）
+
+使用了 `--auto-ssl` 时跳过本节；脚本已经创建并检查反向代理网站。
 
 进入 **网站 -> 网站 -> 创建网站**：
 
@@ -124,7 +183,7 @@ docker inspect --format '{{json .State.Health}}' mini-admin-docs-site
 
 | 类型 | 名称 | 内容 | 代理状态 |
 | --- | --- | --- | --- |
-| `A` | `docs` | 服务器公网 IP | 申请源站证书前可先关闭代理 |
+| `A` | `docs` | 服务器公网 IP | DNS 验证模式可直接开启橙色云 |
 
 域名在其他 DNS 服务商管理时，需要先把域名的 NS 服务器改成 Cloudflare 分配的地址。等待 DNS 生效后可检查：
 
@@ -134,7 +193,9 @@ nslookup docs.example.com
 
 解析结果应为服务器公网 IP，开启橙色云后通常会显示 Cloudflare 的代理 IP。
 
-## 5. 配置 HTTPS
+## 5. 配置 HTTPS（手动模式）
+
+使用了 `--auto-ssl` 时，证书申请、自动续签、证书绑定和 HTTP 跳转 HTTPS 均已完成，只需确认 Cloudflare 为 `Full (strict)`。
 
 在 1Panel 网站的 **HTTPS** 页面配置证书，两种方式任选一种：
 
@@ -152,6 +213,12 @@ nslookup docs.example.com
 不要使用 `Flexible`，否则 Cloudflare 到源站不加密，并可能产生 HTTPS 重定向循环。
 
 建议同时开启 Cloudflare 的 `Always Use HTTPS`、Brotli、HTTP/2 和 HTTP/3。不要对全部 HTML 使用长期 `Cache Everything`；带哈希的静态资源可以长期缓存，HTML 应及时回源检查更新。
+
+相关官方资料：
+
+- [1Panel API 接口与 HMAC-SHA256 鉴权](https://1panel.cn/docs/v2/dev_manual/api_manual/)
+- [1Panel DNS 账号模式申请证书](https://1panel.cn/docs/v2/user_manual/websites/certificate_create/)
+- [Cloudflare 创建最小权限 API Token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/)
 
 ## 6. 验收公网链路
 

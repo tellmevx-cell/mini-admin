@@ -10,6 +10,14 @@ INSTALL_DIR="${MINIADMIN_DOCS_DIR:-/opt/mini-admin-docs}"
 IMAGE="${MINIADMIN_DOCS_IMAGE:-nginx:1.27-alpine}"
 CONTAINER_NAME="${MINIADMIN_DOCS_CONTAINER:-mini-admin-docs-site}"
 FORCE_PULL=0
+AUTO_SSL="${MINIADMIN_DOCS_AUTO_SSL:-0}"
+ACME_EMAIL="${MINIADMIN_ACME_EMAIL:-}"
+CLOUDFLARE_EMAIL="${MINIADMIN_CLOUDFLARE_EMAIL:-}"
+CLOUDFLARE_TOKEN="${MINIADMIN_CLOUDFLARE_TOKEN:-}"
+ONEPANEL_URL="${MINIADMIN_1PANEL_URL:-}"
+ONEPANEL_API_KEY="${MINIADMIN_1PANEL_API_KEY:-}"
+ONEPANEL_INSECURE="${MINIADMIN_1PANEL_INSECURE:-0}"
+SSL_WAIT_SECONDS="${MINIADMIN_SSL_WAIT_SECONDS:-900}"
 
 RELEASES_DIR=""
 CURRENT_LINK=""
@@ -18,6 +26,12 @@ NEW_RELEASE=""
 LIST_FILE=""
 VERBOSE_LIST_FILE=""
 DEPLOY_COMPLETE=0
+ONEPANEL_RESPONSE=""
+SENSITIVE_FILES=()
+WEBSITE_ID=""
+ACME_ACCOUNT_ID=""
+DNS_ACCOUNT_ID=""
+SSL_ID=""
 
 usage() {
   cat <<'EOF'
@@ -35,12 +49,33 @@ MiniAdmin 文档站终端部署脚本
   --image IMAGE      Nginx 镜像，默认 nginx:1.27-alpine
   --container NAME   Docker 容器名，默认 mini-admin-docs-site
   --pull             即使本地已有镜像也重新拉取
+  --auto-ssl         调用 1Panel API 自动创建站点、申请证书并启用 HTTPS
+  --acme-email EMAIL Let's Encrypt 通知邮箱
+  --cloudflare-email Cloudflare 账户邮箱
+  --onepanel-url URL 1Panel 地址，例如 http://127.0.0.1:10086
+  --onepanel-insecure
+                     允许访问使用自签证书的 1Panel HTTPS 地址
+  --ssl-timeout SEC  等待证书签发的秒数，默认 900
   -h, --help         显示帮助
 
 对应环境变量：
   MINIADMIN_DOCS_DOMAIN、MINIADMIN_DOCS_ARCHIVE、MINIADMIN_DOCS_PORT
   MINIADMIN_DOCS_BIND、MINIADMIN_DOCS_DIR、MINIADMIN_DOCS_IMAGE
-  MINIADMIN_DOCS_CONTAINER
+  MINIADMIN_DOCS_CONTAINER、MINIADMIN_DOCS_AUTO_SSL
+  MINIADMIN_ACME_EMAIL、MINIADMIN_CLOUDFLARE_EMAIL
+  MINIADMIN_CLOUDFLARE_TOKEN、MINIADMIN_1PANEL_URL
+  MINIADMIN_1PANEL_API_KEY、MINIADMIN_1PANEL_INSECURE
+
+安全说明：Cloudflare Token 和 1Panel API Key 不提供命令行参数。
+启用 --auto-ssl 且未设置环境变量时，脚本会在终端隐藏输入。
+
+全自动 HTTPS 示例：
+  bash deploy-mini-admin-docs.sh \
+    --domain docs.example.com \
+    --auto-ssl \
+    --acme-email ops@example.com \
+    --cloudflare-email ops@example.com \
+    --onepanel-url http://127.0.0.1:10086
 
 国内服务器可通过镜像变量指定可访问的 Nginx 镜像：
   MINIADMIN_DOCS_IMAGE=你的镜像仓库/nginx:1.27-alpine \
@@ -76,6 +111,14 @@ cleanup() {
   if [[ -n "$VERBOSE_LIST_FILE" && -f "$VERBOSE_LIST_FILE" ]]; then
     rm -f -- "$VERBOSE_LIST_FILE"
   fi
+  local sensitive_file
+  for sensitive_file in "${SENSITIVE_FILES[@]}"; do
+    if [[ -n "$sensitive_file" && -f "$sensitive_file" ]]; then
+      rm -f -- "$sensitive_file"
+    fi
+  done
+  CLOUDFLARE_TOKEN=""
+  ONEPANEL_API_KEY=""
 
   if [[ "$DEPLOY_COMPLETE" -eq 0 && -n "$NEW_RELEASE" && -d "$NEW_RELEASE" ]]; then
     local current_target=""
@@ -132,6 +175,34 @@ parse_args() {
         FORCE_PULL=1
         shift
         ;;
+      --auto-ssl)
+        AUTO_SSL=1
+        shift
+        ;;
+      --acme-email)
+        [[ $# -ge 2 ]] || fail "--acme-email 缺少邮箱。"
+        ACME_EMAIL="$2"
+        shift 2
+        ;;
+      --cloudflare-email)
+        [[ $# -ge 2 ]] || fail "--cloudflare-email 缺少邮箱。"
+        CLOUDFLARE_EMAIL="$2"
+        shift 2
+        ;;
+      --onepanel-url)
+        [[ $# -ge 2 ]] || fail "--onepanel-url 缺少地址。"
+        ONEPANEL_URL="$2"
+        shift 2
+        ;;
+      --onepanel-insecure)
+        ONEPANEL_INSECURE=1
+        shift
+        ;;
+      --ssl-timeout)
+        [[ $# -ge 2 ]] || fail "--ssl-timeout 缺少秒数。"
+        SSL_WAIT_SECONDS="$2"
+        shift 2
+        ;;
       -h|--help)
         usage
         exit 0
@@ -166,10 +237,454 @@ validate_environment() {
   [[ "$INSTALL_DIR" != "/" ]] || fail "安装目录不能是根目录。"
   [[ -n "$IMAGE" ]] || fail "Docker 镜像不能为空。"
   [[ "$CONTAINER_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]+$ ]] || fail "容器名称格式不正确：$CONTAINER_NAME"
+  [[ "$AUTO_SSL" == "0" || "$AUTO_SSL" == "1" ]] || fail "MINIADMIN_DOCS_AUTO_SSL 只支持 0 或 1。"
 
   if [[ "$BIND_ADDRESS" == "0.0.0.0" ]]; then
     warn "当前配置会把 ${PORT} 暴露到公网，请同时配置服务器防火墙。推荐使用默认的 127.0.0.1。"
   fi
+}
+
+ensure_jq() {
+  if command -v jq >/dev/null 2>&1; then
+    return
+  fi
+
+  [[ "$EUID" -eq 0 ]] || fail "自动 HTTPS 需要 jq。请先安装 jq，或使用 root 执行脚本。"
+  log "自动 HTTPS 需要 jq，正在通过系统包管理器安装。"
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y jq
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y jq
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y jq
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache jq
+  else
+    fail "无法自动安装 jq，请先手工安装后重试。"
+  fi
+  command -v jq >/dev/null 2>&1 || fail "jq 安装失败。"
+}
+
+read_required_value() {
+  local variable_name="$1" prompt_text="$2" secret="${3:-0}" value=""
+  [[ -t 0 ]] || fail "$variable_name 未配置，且当前不是交互式终端。"
+  if [[ "$secret" -eq 1 ]]; then
+    printf '%s' "$prompt_text" >&2
+    IFS= read -r -s value || fail "读取 $variable_name 失败。"
+    printf '\n' >&2
+  else
+    IFS= read -r -p "$prompt_text" value || fail "读取 $variable_name 失败。"
+  fi
+  [[ -n "$value" ]] || fail "$variable_name 不能为空。"
+  printf -v "$variable_name" '%s' "$value"
+}
+
+prepare_auto_ssl() {
+  [[ "$AUTO_SSL" -eq 1 ]] || return
+
+  ensure_jq
+  if ! command -v python3 >/dev/null 2>&1; then
+    need_command openssl
+    need_command awk
+  fi
+
+  if [[ -z "$ACME_EMAIL" ]]; then
+    read_required_value ACME_EMAIL "Let's Encrypt 通知邮箱："
+  fi
+  if [[ -z "$CLOUDFLARE_EMAIL" ]]; then
+    read_required_value CLOUDFLARE_EMAIL "Cloudflare 账户邮箱："
+  fi
+  if [[ -z "$CLOUDFLARE_TOKEN" ]]; then
+    read_required_value CLOUDFLARE_TOKEN "Cloudflare API Token（隐藏输入）：" 1
+  fi
+  if [[ -z "$ONEPANEL_URL" ]]; then
+    read_required_value ONEPANEL_URL "1Panel 地址（例如 http://127.0.0.1:10086）："
+  fi
+  if [[ -z "$ONEPANEL_API_KEY" ]]; then
+    read_required_value ONEPANEL_API_KEY "1Panel API Key（隐藏输入）：" 1
+  fi
+
+  [[ "$ACME_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Let's Encrypt 邮箱格式不正确。"
+  [[ "$CLOUDFLARE_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Cloudflare 邮箱格式不正确。"
+  [[ "$CLOUDFLARE_TOKEN" =~ ^[A-Za-z0-9_-]+$ ]] || fail "Cloudflare API Token 格式不正确。"
+  [[ "$ONEPANEL_API_KEY" =~ ^[^[:space:]]+$ ]] || fail "1Panel API Key 不能包含空白字符。"
+  [[ "$SSL_WAIT_SECONDS" =~ ^[0-9]+$ ]] || fail "--ssl-timeout 必须是数字。"
+  ((SSL_WAIT_SECONDS >= 60 && SSL_WAIT_SECONDS <= 3600)) || fail "--ssl-timeout 必须在 60-3600 秒之间。"
+  [[ "$ONEPANEL_INSECURE" == "0" || "$ONEPANEL_INSECURE" == "1" ]] || fail "MINIADMIN_1PANEL_INSECURE 只支持 0 或 1。"
+
+  ONEPANEL_URL="${ONEPANEL_URL%/}"
+  [[ "$ONEPANEL_URL" =~ ^https?://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$ ]] || fail "1Panel 地址只填写协议、主机和端口，不要包含安全入口路径：$ONEPANEL_URL"
+}
+
+sign_onepanel_request() {
+  local timestamp="$1" signature=""
+  if command -v python3 >/dev/null 2>&1; then
+    signature="$(
+      ONEPANEL_HMAC_KEY="$ONEPANEL_API_KEY" \
+      ONEPANEL_HMAC_DATA="1panel:$timestamp" \
+        python3 -c 'import hashlib, hmac, os; print(hmac.new(os.environ["ONEPANEL_HMAC_KEY"].encode(), os.environ["ONEPANEL_HMAC_DATA"].encode(), hashlib.sha256).hexdigest())'
+    )"
+  else
+    signature="$(printf '1panel:%s' "$timestamp" | openssl dgst -sha256 -hmac "$ONEPANEL_API_KEY" | awk '{print $NF}')"
+  fi
+  [[ "$signature" =~ ^[0-9a-fA-F]{64}$ ]] || fail "无法生成 1Panel API 签名。"
+  printf '%s' "$signature"
+}
+
+onepanel_api() {
+  local method="$1" path="$2" body="${3:-}" timestamp signature curl_config response code message
+  timestamp="$(date +%s)"
+  signature="$(sign_onepanel_request "$timestamp")"
+  curl_config="$(mktemp)"
+  chmod 600 "$curl_config"
+  SENSITIVE_FILES+=("$curl_config")
+
+  {
+    printf 'silent\n'
+    printf 'show-error\n'
+    printf 'compressed\n'
+    printf 'connect-timeout = 10\n'
+    printf 'max-time = 600\n'
+    printf 'request = "%s"\n' "$method"
+    printf 'url = "%s/api/v2%s"\n' "$ONEPANEL_URL" "$path"
+    printf 'header = "Content-Type: application/json"\n'
+    printf 'header = "1Panel-Timestamp: %s"\n' "$timestamp"
+    printf 'header = "1Panel-Token: %s"\n' "$signature"
+    if [[ "$ONEPANEL_INSECURE" -eq 1 ]]; then
+      printf 'insecure\n'
+    fi
+  } >"$curl_config"
+
+  if [[ "$method" == "GET" ]]; then
+    if ! response="$(curl --config "$curl_config")"; then
+      rm -f -- "$curl_config"
+      fail "无法连接 1Panel API：$ONEPANEL_URL"
+    fi
+  else
+    if ! response="$(printf '%s' "$body" | curl --config "$curl_config" --data-binary @-)"; then
+      rm -f -- "$curl_config"
+      fail "1Panel API 请求失败：$path"
+    fi
+  fi
+  rm -f -- "$curl_config"
+
+  code="$(printf '%s' "$response" | jq -r '.code // empty' 2>/dev/null || true)"
+  if [[ "$code" != "200" ]]; then
+    message="$(printf '%s' "$response" | jq -r '.message // "响应格式不正确"' 2>/dev/null || printf '响应格式不正确')"
+    fail "1Panel API 返回失败（$path）：$message"
+  fi
+  ONEPANEL_RESPONSE="$response"
+}
+
+verify_cloudflare_token() {
+  local curl_config response
+  curl_config="$(mktemp)"
+  chmod 600 "$curl_config"
+  SENSITIVE_FILES+=("$curl_config")
+  {
+    printf 'silent\n'
+    printf 'show-error\n'
+    printf 'compressed\n'
+    printf 'connect-timeout = 10\n'
+    printf 'max-time = 30\n'
+    printf 'url = "https://api.cloudflare.com/client/v4/user/tokens/verify"\n'
+    printf 'header = "Authorization: Bearer %s"\n' "$CLOUDFLARE_TOKEN"
+  } >"$curl_config"
+
+  if ! response="$(curl --config "$curl_config")"; then
+    rm -f -- "$curl_config"
+    fail "无法访问 Cloudflare API，请检查服务器网络。"
+  fi
+  rm -f -- "$curl_config"
+  [[ "$(printf '%s' "$response" | jq -r '.success // false')" == "true" ]] || fail "Cloudflare API Token 无效或无法验证。"
+  success "Cloudflare API Token 验证通过。"
+}
+
+find_onepanel_website() {
+  local body
+  body="$(
+    jq -cn --arg domain "$DOMAIN" '{
+      page: 1,
+      pageSize: 100,
+      name: $domain,
+      orderBy: "created_at",
+      order: "null",
+      websiteGroupId: 0,
+      type: ""
+    }'
+  )"
+  onepanel_api POST "/websites/search" "$body"
+  WEBSITE_ID="$(
+    printf '%s' "$ONEPANEL_RESPONSE" |
+      jq -r --arg domain "$DOMAIN" '[.data.items[]? | select((.primaryDomain | split(":")[0]) == $domain)] | first | .id // empty'
+  )"
+}
+
+ensure_onepanel_website() {
+  local group_id alias task_id proxy_url body site_type site_proxy
+  proxy_url="http://127.0.0.1:$PORT"
+  find_onepanel_website
+
+  if [[ -z "$WEBSITE_ID" ]]; then
+    log "1Panel 中没有 $DOMAIN，正在创建反向代理网站。"
+    onepanel_api POST "/groups/search" '{"type":"website"}'
+    group_id="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data[0].id // empty')"
+    [[ "$group_id" =~ ^[0-9]+$ ]] || fail "1Panel 中没有可用的网站分组。"
+
+    alias="docs-${DOMAIN//./-}"
+    alias="${alias:0:40}"
+    if [[ -r /proc/sys/kernel/random/uuid ]]; then
+      IFS= read -r task_id </proc/sys/kernel/random/uuid
+    elif command -v uuidgen >/dev/null 2>&1; then
+      task_id="$(uuidgen)"
+    else
+      task_id="miniadmin-docs-$(date +%s)-$$"
+    fi
+    body="$(
+      jq -cn \
+        --arg alias "$alias" \
+        --arg domain "$DOMAIN" \
+        --arg proxy "$proxy_url" \
+        --arg taskId "$task_id" \
+        --argjson groupId "$group_id" \
+        '{
+          type: "proxy",
+          alias: $alias,
+          remark: "MiniAdmin documentation",
+          proxy: $proxy,
+          webSiteGroupID: $groupId,
+          IPV6: false,
+          domains: [{domain: $domain, port: 80, ssl: false}],
+          taskID: $taskId,
+          enableSSL: false,
+          websiteSSLID: 0
+        }'
+    )"
+    onepanel_api POST "/websites" "$body"
+    find_onepanel_website
+    [[ "$WEBSITE_ID" =~ ^[0-9]+$ ]] || fail "1Panel 网站创建完成，但无法查询到 $DOMAIN。"
+  fi
+
+  onepanel_api GET "/websites/$WEBSITE_ID"
+  site_type="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.type // empty')"
+  site_proxy="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.proxy // empty')"
+  [[ "$site_type" == "proxy" ]] || fail "域名 $DOMAIN 已被非反向代理网站占用，未自动修改现有网站。"
+  if [[ "$site_proxy" != "$proxy_url" && "$site_proxy" != "127.0.0.1:$PORT" ]]; then
+    fail "域名 $DOMAIN 已代理到 $site_proxy，预期为 $proxy_url；为避免覆盖现有配置已停止。"
+  fi
+  success "1Panel 反向代理网站已就绪（ID: $WEBSITE_ID）。"
+}
+
+ensure_onepanel_acme_account() {
+  local body
+  onepanel_api POST "/websites/acme/search" '{"page":1,"pageSize":100}'
+  ACME_ACCOUNT_ID="$(
+    printf '%s' "$ONEPANEL_RESPONSE" |
+      jq -r --arg email "$ACME_EMAIL" '[.data.items[]? | select(.email == $email and .type == "letsencrypt")] | first | .id // empty'
+  )"
+
+  if [[ -z "$ACME_ACCOUNT_ID" ]]; then
+    log "创建 1Panel Let's Encrypt ACME 账户。"
+    body="$(
+      jq -cn --arg email "$ACME_EMAIL" '{
+        email: $email,
+        type: "letsencrypt",
+        keyType: "EC256",
+        eabKid: "",
+        eabHmacKey: "",
+        useProxy: false,
+        caDirURL: "",
+        useEAB: false
+      }'
+    )"
+    onepanel_api POST "/websites/acme" "$body"
+    ACME_ACCOUNT_ID="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.id // empty')"
+  fi
+
+  [[ "$ACME_ACCOUNT_ID" =~ ^[0-9]+$ ]] || fail "无法创建或查询 1Panel ACME 账户。"
+  success "Let's Encrypt ACME 账户已就绪（ID: $ACME_ACCOUNT_ID）。"
+}
+
+ensure_onepanel_dns_account() {
+  local account_name body
+  account_name="miniadmin-${DOMAIN//./-}"
+  account_name="${account_name:0:40}"
+
+  onepanel_api POST "/websites/dns/search" '{"page":1,"pageSize":100}'
+  DNS_ACCOUNT_ID="$(
+    printf '%s' "$ONEPANEL_RESPONSE" |
+      jq -r --arg name "$account_name" '[.data.items[]? | select(.name == $name and .type == "CloudFlare")] | first | .id // empty'
+  )"
+
+  if [[ -z "$DNS_ACCOUNT_ID" ]]; then
+    log "创建 1Panel Cloudflare DNS 账户。"
+    body="$(
+      jq -cn \
+        --arg name "$account_name" \
+        --arg email "$CLOUDFLARE_EMAIL" \
+        --arg token "$CLOUDFLARE_TOKEN" \
+        '{name: $name, type: "CloudFlare", authorization: {email: $email, apiKey: $token}}'
+    )"
+    onepanel_api POST "/websites/dns" "$body"
+    onepanel_api POST "/websites/dns/search" '{"page":1,"pageSize":100}'
+    DNS_ACCOUNT_ID="$(
+      printf '%s' "$ONEPANEL_RESPONSE" |
+        jq -r --arg name "$account_name" '[.data.items[]? | select(.name == $name and .type == "CloudFlare")] | first | .id // empty'
+    )"
+  else
+    log "更新现有 1Panel Cloudflare DNS 账户凭证。"
+    body="$(
+      jq -cn \
+        --argjson id "$DNS_ACCOUNT_ID" \
+        --arg name "$account_name" \
+        --arg email "$CLOUDFLARE_EMAIL" \
+        --arg token "$CLOUDFLARE_TOKEN" \
+        '{id: $id, name: $name, type: "CloudFlare", authorization: {email: $email, apiKey: $token}}'
+    )"
+    onepanel_api POST "/websites/dns/update" "$body"
+  fi
+
+  [[ "$DNS_ACCOUNT_ID" =~ ^[0-9]+$ ]] || fail "无法创建或查询 1Panel Cloudflare DNS 账户。"
+  success "Cloudflare DNS 账户已就绪（ID: $DNS_ACCOUNT_ID）。"
+}
+
+certificate_request_body() {
+  local id="${1:-0}"
+  jq -cn \
+    --argjson id "$id" \
+    --arg domain "$DOMAIN" \
+    --argjson acmeId "$ACME_ACCOUNT_ID" \
+    --argjson dnsId "$DNS_ACCOUNT_ID" \
+    '{
+      id: $id,
+      primaryDomain: $domain,
+      otherDomains: "",
+      provider: "dnsAccount",
+      acmeAccountId: $acmeId,
+      dnsAccountId: $dnsId,
+      autoRenew: true,
+      keyType: "EC256",
+      apply: true,
+      pushDir: false,
+      dir: "",
+      description: "MiniAdmin documentation auto TLS",
+      disableCNAME: false,
+      skipDNS: false,
+      nameserver1: "",
+      nameserver2: "",
+      execShell: false,
+      shell: "",
+      pushNode: false,
+      nodes: "",
+      isIp: false
+    }'
+}
+
+wait_for_onepanel_certificate() {
+  local deadline status message
+  deadline=$((SECONDS + SSL_WAIT_SECONDS))
+  while ((SECONDS < deadline)); do
+    onepanel_api GET "/websites/ssl/$SSL_ID"
+    status="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.status // empty')"
+    case "$status" in
+      ready)
+        success "Let's Encrypt 证书签发成功（ID: $SSL_ID）。"
+        return 0
+        ;;
+      error|applyError)
+        message="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.message // "未知错误"')"
+        fail "证书签发失败：$message"
+        ;;
+      init|applying|"") ;;
+      *) warn "证书当前状态：$status" ;;
+    esac
+    sleep 5
+  done
+  fail "等待证书签发超过 ${SSL_WAIT_SECONDS} 秒，请到 1Panel 证书日志查看详情。"
+}
+
+ensure_onepanel_certificate() {
+  local body ssl_record status
+  body="$(jq -cn --arg domain "$DOMAIN" '{page:1,pageSize:100,acmeAccountID:"",domain:$domain,orderBy:"updated_at",order:"descending"}')"
+  onepanel_api POST "/websites/ssl/search" "$body"
+  ssl_record="$(
+    printf '%s' "$ONEPANEL_RESPONSE" |
+      jq -c --arg domain "$DOMAIN" '[.data.items[]? | select(.primaryDomain == $domain and .provider == "dnsAccount")] | sort_by(.id) | last // empty'
+  )"
+
+  if [[ -z "$ssl_record" ]]; then
+    log "向 Let's Encrypt 申请 $DOMAIN 的新证书。"
+    body="$(certificate_request_body 0)"
+    onepanel_api POST "/websites/ssl" "$body"
+    SSL_ID="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.id // empty')"
+    status="init"
+  else
+    SSL_ID="$(printf '%s' "$ssl_record" | jq -r '.id')"
+    status="$(printf '%s' "$ssl_record" | jq -r '.status // empty')"
+    if [[ "$status" != "applying" ]]; then
+      body="$(certificate_request_body "$SSL_ID")"
+      onepanel_api POST "/websites/ssl/update" "$body"
+    fi
+    if [[ "$status" == "ready" ]]; then
+      success "复用现有有效证书（ID: $SSL_ID），并已启用自动续签。"
+      return
+    fi
+    if [[ "$status" != "applying" ]]; then
+      log "重新触发证书签发（ID: $SSL_ID）。"
+      body="$(jq -cn --argjson id "$SSL_ID" '{ID:$id,skipDNSCheck:false,nameservers:[]}')"
+      onepanel_api POST "/websites/ssl/obtain" "$body"
+    fi
+  fi
+
+  [[ "$SSL_ID" =~ ^[0-9]+$ ]] || fail "1Panel 未返回有效的证书 ID。"
+  wait_for_onepanel_certificate
+}
+
+attach_onepanel_certificate() {
+  local algorithm body enabled attached_id
+  algorithm="ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK"
+  body="$(
+    jq -cn \
+      --argjson websiteId "$WEBSITE_ID" \
+      --argjson sslId "$SSL_ID" \
+      --arg algorithm "$algorithm" \
+      '{
+        websiteId: $websiteId,
+        enable: true,
+        websiteSSLId: $sslId,
+        type: "existed",
+        privateKey: "",
+        certificate: "",
+        privateKeyPath: "",
+        certificatePath: "",
+        importType: "",
+        httpConfig: "HTTPToHTTPS",
+        "SSLProtocol": ["TLSv1.3", "TLSv1.2"],
+        algorithm: $algorithm,
+        hsts: true,
+        hstsIncludeSubDomains: false,
+        httpsPorts: [443],
+        http3: false
+      }'
+  )"
+  onepanel_api POST "/websites/$WEBSITE_ID/https" "$body"
+  onepanel_api GET "/websites/$WEBSITE_ID/https"
+  enabled="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.enable // false')"
+  attached_id="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.SSL.id // empty')"
+  [[ "$enabled" == "true" && "$attached_id" == "$SSL_ID" ]] || fail "1Panel 未确认 HTTPS 证书绑定结果。"
+  success "1Panel 已绑定证书并启用 HTTP 跳转 HTTPS。"
+}
+
+configure_auto_ssl() {
+  [[ "$AUTO_SSL" -eq 1 ]] || return
+  log "开始配置 1Panel 与 Let's Encrypt 自动 HTTPS。"
+  verify_cloudflare_token
+  ensure_onepanel_website
+  ensure_onepanel_acme_account
+  ensure_onepanel_dns_account
+  ensure_onepanel_certificate
+  attach_onepanel_certificate
 }
 
 resolve_archive() {
@@ -412,10 +927,17 @@ print_next_steps() {
   printf '  curl -I http://127.0.0.1:%s/\n' "$PORT"
   printf '  docker ps --filter name=%s\n' "$CONTAINER_NAME"
   printf '  docker logs --tail=100 %s\n' "$CONTAINER_NAME"
-  printf '\n1Panel 后续配置：\n'
-  printf '  1. 创建反向代理网站，主域名填写 %s。\n' "$DOMAIN"
-  printf '  2. 代理地址填写 http://127.0.0.1:%s。\n' "$PORT"
-  printf '  3. 为该网站申请证书并开启 HTTPS 和 HTTP 跳转 HTTPS。\n'
+  if [[ "$AUTO_SSL" -eq 1 ]]; then
+    printf '\n1Panel 自动配置已完成：\n'
+    printf '  - 反向代理：http://127.0.0.1:%s\n' "$PORT"
+    printf '  - Let\x27s Encrypt 证书：已签发并启用自动续签\n'
+    printf '  - HTTPS：已启用，HTTP 自动跳转 HTTPS\n'
+  else
+    printf '\n1Panel 后续配置：\n'
+    printf '  1. 创建反向代理网站，主域名填写 %s。\n' "$DOMAIN"
+    printf '  2. 代理地址填写 http://127.0.0.1:%s。\n' "$PORT"
+    printf '  3. 为该网站申请证书并开启 HTTPS 和 HTTP 跳转 HTTPS。\n'
+  fi
   printf '\nCloudflare 后续配置：\n'
   printf '  1. 添加 %s 指向服务器公网 IP 的 A 记录。\n' "$DOMAIN"
   printf '  2. 确认源站 HTTPS 正常后开启橙色云。\n'
@@ -424,13 +946,21 @@ print_next_steps() {
   printf '由 1Panel 的 443 端口反向代理到本机 %s。\n' "$PORT"
 }
 
-parse_args "$@"
-validate_environment
-resolve_archive
-validate_archive
-prepare_release
-write_nginx_config
-ensure_image
-validate_nginx_config
-deploy
-print_next_steps
+main() {
+  parse_args "$@"
+  validate_environment
+  prepare_auto_ssl
+  resolve_archive
+  validate_archive
+  prepare_release
+  write_nginx_config
+  ensure_image
+  validate_nginx_config
+  deploy
+  configure_auto_ssl
+  print_next_steps
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
