@@ -73,7 +73,7 @@ try {
     Write-Host "Upload both files to the server, then run:"
     Write-Host "  bash deploy-mini-admin-docs.sh --domain docs.example.com"
     Write-Host "Automatic 1Panel HTTPS:"
-    Write-Host "  bash deploy-mini-admin-docs.sh --domain docs.example.com --auto-ssl --acme-email ops@example.com --cloudflare-email ops@example.com --onepanel-url http://127.0.0.1:10086"
+    Write-Host "  bash deploy-mini-admin-docs.sh --domain docs.example.com --auto-ssl --acme-email ops@example.com --cloudflare-email ops@example.com"
 }
 finally {
     Pop-Location

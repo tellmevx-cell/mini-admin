@@ -58,7 +58,7 @@ MiniAdmin 文档站终端部署脚本
   --auto-ssl         调用 1Panel API 自动创建站点、申请证书并启用 HTTPS
   --acme-email EMAIL Let's Encrypt 通知邮箱
   --cloudflare-email Cloudflare 账户邮箱
-  --onepanel-url URL 1Panel 地址，例如 http://127.0.0.1:10086
+  --onepanel-url URL 1Panel 地址；本机默认通过 1pctl 自动识别
   --onepanel-api-version VERSION
                      1Panel API 版本，支持 auto、v1、v2，默认 auto
   --onepanel-insecure
@@ -83,8 +83,7 @@ MiniAdmin 文档站终端部署脚本
     --domain docs.example.com \
     --auto-ssl \
     --acme-email ops@example.com \
-    --cloudflare-email ops@example.com \
-    --onepanel-url http://127.0.0.1:10086
+    --cloudflare-email ops@example.com
 
 国内服务器可通过镜像变量指定可访问的 Nginx 镜像：
   MINIADMIN_DOCS_IMAGE=你的镜像仓库/nginx:1.27-alpine \
@@ -294,6 +293,32 @@ read_required_value() {
   printf -v "$variable_name" '%s' "$value"
 }
 
+detect_local_onepanel_url() {
+  local user_info="" panel_url="" authority="" protocol="" port=""
+  command -v 1pctl >/dev/null 2>&1 || return 1
+  if ! user_info="$(1pctl user-info 2>/dev/null)"; then
+    return 1
+  fi
+
+  panel_url="$(printf '%s' "$user_info" | grep -Eo 'https?://[^[:space:]]+' | head -n 1 || true)"
+  user_info=""
+  [[ -n "$panel_url" ]] || return 1
+  protocol="${panel_url%%://*}"
+  authority="${panel_url#*://}"
+  authority="${authority%%/*}"
+  port="${authority##*:}"
+  [[ "$protocol" == "http" || "$protocol" == "https" ]] || return 1
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  ((port >= 1 && port <= 65535)) || return 1
+
+  ONEPANEL_URL="$protocol://127.0.0.1:$port"
+  if [[ "$protocol" == "https" && "$ONEPANEL_INSECURE" -eq 0 ]]; then
+    ONEPANEL_INSECURE=1
+    warn "1Panel 本机接口启用了 HTTPS，将通过回环地址校验证书接口并忽略本机证书域名不匹配。"
+  fi
+  success "已从 1pctl 自动识别 1Panel 地址：$ONEPANEL_URL。"
+}
+
 prepare_auto_ssl() {
   [[ "$AUTO_SSL" -eq 1 ]] || return
 
@@ -313,7 +338,14 @@ prepare_auto_ssl() {
     read_required_value CLOUDFLARE_TOKEN "Cloudflare API Token（隐藏输入）：" 1
   fi
   if [[ -z "$ONEPANEL_URL" ]]; then
-    read_required_value ONEPANEL_URL "1Panel 地址（例如 http://127.0.0.1:10086）："
+    if ! detect_local_onepanel_url; then
+      read_required_value ONEPANEL_URL "1Panel 地址（例如 http://127.0.0.1:10086）："
+    fi
+  elif [[ "$ONEPANEL_URL" =~ ^https?://(127\.0\.0\.1|localhost):${PORT}/?$ ]]; then
+    warn "$ONEPANEL_URL 是文档站端口，不是 1Panel API 地址，正在自动查找正确端口。"
+    if ! detect_local_onepanel_url; then
+      fail "无法通过 1pctl 自动识别 1Panel 端口。请执行 1pctl user-info，并把其中的协议和端口传给 --onepanel-url。"
+    fi
   fi
   if [[ -z "$ONEPANEL_API_KEY" ]]; then
     read_required_value ONEPANEL_API_KEY "1Panel API Key（隐藏输入）：" 1

@@ -71,7 +71,7 @@ bash deploy-mini-admin-docs.sh --domain docs.example.com
 
 > API Key、Token 或密码一旦出现在截图、聊天记录或公开日志中，应立即在对应平台重置，旧密钥不再继续使用。
 
-执行 `1pctl user-info` 可以查看 1Panel 的协议和端口。`--onepanel-url` 只填写协议、主机和端口，不包含安全入口路径：
+脚本在 1Panel 所在服务器上运行时，会通过 `1pctl user-info` 自动读取协议和端口，通常不再需要填写 `--onepanel-url`：
 
 ```bash
 cd /root/mini-admin-docs-upload
@@ -79,11 +79,12 @@ bash deploy-mini-admin-docs.sh \
   --domain docs.example.com \
   --auto-ssl \
   --acme-email ops@example.com \
-  --cloudflare-email ops@example.com \
-  --onepanel-url http://127.0.0.1:10086
+  --cloudflare-email ops@example.com
 ```
 
-脚本会先探测 `/api/v2`，再回退 `/api/v1`，并隐藏提示输入 `Cloudflare API Token` 和 `1Panel API Key`，它们不会出现在命令行参数或 shell history 中。如果 1Panel 只开放使用自签证书的 HTTPS 地址，改为：
+脚本会先识别本机 1Panel 地址，再探测 `/api/v2` 并回退 `/api/v1`，同时隐藏提示输入 `Cloudflare API Token` 和 `1Panel API Key`，它们不会出现在命令行参数或 shell history 中。若显式填写了文档站地址（例如 `http://127.0.0.1:8090`），脚本会识别这是文档端口并自动改用 1Panel 端口。
+
+只有脚本不在 1Panel 所在服务器运行，或者无法执行 `1pctl` 时，才需要显式指定地址。如果远程 1Panel 使用自签证书的 HTTPS，可使用：
 
 ```bash
 bash deploy-mini-admin-docs.sh \
@@ -98,6 +99,7 @@ bash deploy-mini-admin-docs.sh \
 自动模式具有以下保护：
 
 - 在停止或替换现有文档容器之前完成 Cloudflare Token、1Panel API 版本和鉴权检查。
+- 优先通过本机 `1pctl` 获取真实面板端口，防止把文档端口 `8090` 当成 1Panel API 端口。
 - 域名不存在时创建指向 `http://127.0.0.1:8090` 的反向代理网站。
 - 域名已被非反向代理网站占用时停止，不覆盖原网站。
 - 现有代理目标不是当前文档站时停止，不静默修改代理地址。
@@ -133,8 +135,7 @@ bash deploy-mini-admin-docs.sh \
   --domain docs.example.com \
   --auto-ssl \
   --acme-email ops@example.com \
-  --cloudflare-email ops@example.com \
-  --onepanel-url http://127.0.0.1:10086
+  --cloudflare-email ops@example.com
 
 unset MINIADMIN_CLOUDFLARE_TOKEN MINIADMIN_1PANEL_API_KEY
 ```
