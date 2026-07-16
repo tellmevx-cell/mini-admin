@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDirectory ".."))
 $docsOutput = Join-Path $repositoryRoot "docs-site\.vitepress\dist"
+$deployScriptSource = Join-Path $repositoryRoot "deploy-mini-admin-docs.sh"
 
 foreach ($command in @("git", "pnpm", "tar")) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
@@ -24,6 +25,10 @@ try {
 
     if (-not (Test-Path -LiteralPath (Join-Path $docsOutput "index.html"))) {
         throw "The documentation build did not produce index.html."
+    }
+
+    if (-not (Test-Path -LiteralPath $deployScriptSource)) {
+        throw "The server deployment script is missing: $deployScriptSource"
     }
 
     $commit = (& git rev-parse --short=12 HEAD).Trim()
@@ -56,11 +61,17 @@ try {
 
     $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash.ToLowerInvariant()
     $sizeMb = [math]::Round((Get-Item -LiteralPath $archivePath).Length / 1MB, 2)
+    $deployScriptPath = Join-Path $resolvedOutputDirectory "deploy-mini-admin-docs.sh"
+    Copy-Item -LiteralPath $deployScriptSource -Destination $deployScriptPath -Force
+    $deployScriptChecksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $deployScriptPath).Hash.ToLowerInvariant()
 
     Write-Host "Documentation package created: $archivePath"
     Write-Host "Size: $sizeMb MB"
     Write-Host "SHA256: $checksum"
-    Write-Host "Upload it to the 1Panel static website root and extract it there."
+    Write-Host "Deployment script copied: $deployScriptPath"
+    Write-Host "Script SHA256: $deployScriptChecksum"
+    Write-Host "Upload both files to the server, then run:"
+    Write-Host "  bash deploy-mini-admin-docs.sh --domain docs.example.com"
 }
 finally {
     Pop-Location
