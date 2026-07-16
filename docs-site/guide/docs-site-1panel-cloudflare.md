@@ -63,10 +63,10 @@ bash deploy-mini-admin-docs.sh --domain docs.example.com
 
 ### 推荐：自动创建站点和证书
 
-脚本会自动识别 1Panel V2 或 V1 API，并使用对应的接口、签名算法和请求字段，自动完成反向代理网站、Cloudflare DNS 账户、Let's Encrypt ACME 账户、证书申请、自动续签和 HTTPS 绑定。首次执行前准备两个最小权限凭证：
+脚本会自动识别 1Panel V2 或 V1 API，并使用对应的接口、签名算法和请求字段，自动完成反向代理网站和 HTTPS 绑定。它会优先查找覆盖目标域名且尚未过期的现有证书；找到后直接复用，不再申请证书，也不要求 Cloudflare Token。没有可用证书时，才创建 Cloudflare DNS 与 Let's Encrypt ACME 账户并申请新证书。首次执行前准备相应的最小权限凭证：
 
 1. 在 1Panel 左下角用户菜单的 **API 接口** 中启用 API，IP 白名单加入 `127.0.0.1`，复制 API Key。
-2. 在 Cloudflare 的 **My Profile -> API Tokens** 使用 `Edit zone DNS` 模板创建 Token，并把资源范围限制到文档域名所在的单个 Zone。
+2. 仅在 1Panel 没有现成有效证书时，在 Cloudflare 的 **My Profile -> API Tokens** 使用 `Edit zone DNS` 模板创建 Token，并把资源范围限制到文档域名所在的单个 Zone。
 3. 不要使用 Cloudflare Global API Key，也不要把任何 Token 写进脚本或提交到 Git。
 
 > API Key、Token 或密码一旦出现在截图、聊天记录或公开日志中，应立即在对应平台重置，旧密钥不再继续使用。
@@ -82,7 +82,7 @@ bash deploy-mini-admin-docs.sh \
   --cloudflare-email ops@example.com
 ```
 
-脚本会先识别本机 1Panel 地址，再探测 `/api/v2` 并回退 `/api/v1`，同时隐藏提示输入 `Cloudflare API Token` 和 `1Panel API Key`，它们不会出现在命令行参数或 shell history 中。若显式填写了文档站地址（例如 `http://127.0.0.1:8090`），脚本会识别这是文档端口并自动改用 1Panel 端口。
+脚本会先识别本机 1Panel 地址，再探测 `/api/v2` 并回退 `/api/v1`，同时隐藏提示输入 `1Panel API Key`。只有未找到现有有效证书时，才继续询问并校验 `Cloudflare API Token`。密钥不会出现在命令行参数或 shell history 中。若显式填写了文档站地址（例如 `http://127.0.0.1:8090`），脚本会识别这是文档端口并自动改用 1Panel 端口。
 
 只有脚本不在 1Panel 所在服务器运行，或者无法执行 `1pctl` 时，才需要显式指定地址。如果远程 1Panel 使用自签证书的 HTTPS，可使用：
 
@@ -98,13 +98,14 @@ bash deploy-mini-admin-docs.sh \
 
 自动模式具有以下保护：
 
-- 在停止或替换现有文档容器之前完成 Cloudflare Token、1Panel API 版本和鉴权检查。
+- 在停止或替换现有文档容器之前完成 1Panel API 版本和鉴权检查。
 - 优先通过本机 `1pctl` 获取真实面板端口，防止把文档端口 `8090` 当成 1Panel API 端口。
-- 先通过 Cloudflare DNS 验证签发证书，再让 1Panel V2 直接创建 HTTPS `443` 站点，不绑定宿主机 `80`。
+- 优先复用覆盖目标域名的现有有效证书，包括精确域名和通配符证书；不存在时才校验 Cloudflare Token 并通过 DNS 验证签发证书。
+- 让 1Panel V2 直接创建 HTTPS `443` 站点，不绑定宿主机 `80`。
 - 域名不存在时创建指向 `http://127.0.0.1:8090` 的 HTTPS 反向代理网站。
 - 域名已被非反向代理网站占用时停止，不覆盖原网站。
 - 现有代理目标不是当前文档站时停止，不静默修改代理地址。
-- 复用同域名的有效证书，并确保开启自动续签。
+- 复用现有证书时保留其原续签策略；新申请的证书开启自动续签。
 - 证书申请失败时显示 1Panel 返回的错误，不输出 Cloudflare Token。
 
 自动模式默认保留服务器上现有的 `80` 端口服务，MiniAdmin 文档站只使用公网 HTTPS `443`。请在 Cloudflare 开启 **Always Use HTTPS**，由 Cloudflare 在边缘把访客的 HTTP 请求跳转到 HTTPS，而不是让源站占用 `80`。

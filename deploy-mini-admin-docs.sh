@@ -39,6 +39,7 @@ WEBSITE_ID=""
 ACME_ACCOUNT_ID=""
 DNS_ACCOUNT_ID=""
 SSL_ID=""
+REUSED_CERTIFICATE=0
 
 usage() {
   cat <<'EOF'
@@ -335,15 +336,6 @@ prepare_auto_ssl() {
     need_command awk
   fi
 
-  if [[ -z "$ACME_EMAIL" ]]; then
-    read_required_value ACME_EMAIL "Let's Encrypt 通知邮箱："
-  fi
-  if [[ -z "$CLOUDFLARE_EMAIL" ]]; then
-    read_required_value CLOUDFLARE_EMAIL "Cloudflare 账户邮箱："
-  fi
-  if [[ -z "$CLOUDFLARE_TOKEN" ]]; then
-    read_required_value CLOUDFLARE_TOKEN "Cloudflare API Token（隐藏输入）：" 1
-  fi
   if [[ -z "$ONEPANEL_URL" ]]; then
     if ! detect_local_onepanel_url; then
       read_required_value ONEPANEL_URL "1Panel 地址（例如 http://127.0.0.1:10086）："
@@ -358,9 +350,6 @@ prepare_auto_ssl() {
     read_required_value ONEPANEL_API_KEY "1Panel API Key（隐藏输入）：" 1
   fi
 
-  [[ "$ACME_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Let's Encrypt 邮箱格式不正确。"
-  [[ "$CLOUDFLARE_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Cloudflare 邮箱格式不正确。"
-  [[ "$CLOUDFLARE_TOKEN" =~ ^[A-Za-z0-9_-]+$ ]] || fail "Cloudflare API Token 格式不正确。"
   [[ "$ONEPANEL_API_KEY" =~ ^[^[:space:]]+$ ]] || fail "1Panel API Key 不能包含空白字符。"
   [[ "$SSL_WAIT_SECONDS" =~ ^[0-9]+$ ]] || fail "--ssl-timeout 必须是数字。"
   ((SSL_WAIT_SECONDS >= 60 && SSL_WAIT_SECONDS <= 3600)) || fail "--ssl-timeout 必须在 60-3600 秒之间。"
@@ -377,6 +366,22 @@ prepare_auto_ssl() {
   [[ "$ONEPANEL_URL" =~ ^https?://(\[[0-9A-Fa-f:]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?$ ]] || fail "1Panel 地址只填写协议、主机和端口，不要包含安全入口路径：$ONEPANEL_URL"
 
   detect_onepanel_api
+}
+
+prepare_certificate_issuance() {
+  if [[ -z "$ACME_EMAIL" ]]; then
+    read_required_value ACME_EMAIL "Let's Encrypt 通知邮箱："
+  fi
+  if [[ -z "$CLOUDFLARE_EMAIL" ]]; then
+    read_required_value CLOUDFLARE_EMAIL "Cloudflare 账户邮箱："
+  fi
+  if [[ -z "$CLOUDFLARE_TOKEN" ]]; then
+    read_required_value CLOUDFLARE_TOKEN "Cloudflare API Token（隐藏输入）：" 1
+  fi
+
+  [[ "$ACME_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Let's Encrypt 邮箱格式不正确。"
+  [[ "$CLOUDFLARE_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Cloudflare 邮箱格式不正确。"
+  [[ "$CLOUDFLARE_TOKEN" =~ ^[A-Za-z0-9_-]+$ ]] || fail "Cloudflare API Token 格式不正确。"
   verify_cloudflare_token
 }
 
@@ -891,6 +896,35 @@ wait_for_onepanel_certificate() {
   fail "等待证书签发超过 ${SSL_WAIT_SECONDS} 秒，请到 1Panel 证书日志查看详情。"
 }
 
+find_reusable_onepanel_certificate() {
+  local body record today
+  today="$(date -u +%Y-%m-%d)"
+  body="$(jq -cn --arg domain "$DOMAIN" '{page:1,pageSize:100,acmeAccountID:"",domain:$domain,orderBy:"expire_date",order:"descending"}')"
+  onepanel_api POST "/websites/ssl/search" "$body"
+  record="$(
+    printf '%s' "$ONEPANEL_RESPONSE" |
+      jq -c --arg domain "$DOMAIN" --arg today "$today" '
+        def covers_domain:
+          . as $cert |
+          ($domain | split(".") | .[1:] | join(".")) as $base |
+          ([($cert.primaryDomain // "")] +
+            (($cert.domains // "") | gsub("[\\[\\]\\\"\\r\\n ]"; ",") | split(","))) as $names |
+          (($names | index($domain)) != null or ($names | index("*." + $base)) != null);
+        [.data.items[]? |
+          select((.id // 0) > 0 and .status == "ready" and ((.expireDate // "")[0:10] > $today)) |
+          select(covers_domain)] |
+        sort_by(.expireDate, .id) |
+        last // empty'
+  )"
+
+  [[ -n "$record" ]] || return 1
+  SSL_ID="$(printf '%s' "$record" | jq -r '.id // empty')"
+  [[ "$SSL_ID" =~ ^[1-9][0-9]*$ ]] || return 1
+  REUSED_CERTIFICATE=1
+  success "已识别并复用 1Panel 现有有效证书（ID: $SSL_ID），跳过重复申请。"
+  return 0
+}
+
 ensure_onepanel_certificate() {
   local body search_body ssl_record status attempt
   search_body="$(jq -cn --arg domain "$DOMAIN" '{page:1,pageSize:100,acmeAccountID:"",domain:$domain,orderBy:"updated_at",order:"descending"}')"
@@ -982,10 +1016,14 @@ attach_onepanel_certificate() {
 
 configure_auto_ssl() {
   [[ "$AUTO_SSL" -eq 1 ]] || return
-  log "开始配置 1Panel 与 Let's Encrypt 自动 HTTPS。"
-  ensure_onepanel_acme_account
-  ensure_onepanel_dns_account
-  ensure_onepanel_certificate
+  log "开始配置 1Panel HTTPS。"
+  if ! find_reusable_onepanel_certificate; then
+    log "未找到覆盖 $DOMAIN 的有效证书，准备通过 Cloudflare DNS 申请新证书。"
+    prepare_certificate_issuance
+    ensure_onepanel_acme_account
+    ensure_onepanel_dns_account
+    ensure_onepanel_certificate
+  fi
   ensure_onepanel_website
   attach_onepanel_certificate
 }
@@ -1233,7 +1271,11 @@ print_next_steps() {
   if [[ "$AUTO_SSL" -eq 1 ]]; then
     printf '\n1Panel 自动配置已完成：\n'
     printf '  - 反向代理：http://127.0.0.1:%s\n' "$PORT"
-    printf '  - Let\x27s Encrypt 证书：已签发并启用自动续签\n'
+    if [[ "$REUSED_CERTIFICATE" -eq 1 ]]; then
+      printf '  - TLS 证书：已复用 1Panel 现有有效证书（ID: %s）\n' "$SSL_ID"
+    else
+      printf '  - Let\x27s Encrypt 证书：已签发并启用自动续签\n'
+    fi
     printf '  - HTTPS：已启用，仅监听 HTTPS 站点端口，不使用宿主机 80\n'
   else
     printf '\n1Panel 后续配置：\n'
