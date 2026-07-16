@@ -40,6 +40,7 @@ ACME_ACCOUNT_ID=""
 DNS_ACCOUNT_ID=""
 SSL_ID=""
 REUSED_CERTIFICATE=0
+CLOUDFLARE_ZONE_NAME=""
 
 usage() {
   cat <<'EOF'
@@ -574,7 +575,7 @@ onepanel_api() {
 }
 
 verify_cloudflare_token() {
-  local curl_config response
+  local curl_config response zones_response
   curl_config="$(mktemp)"
   chmod 600 "$curl_config"
   SENSITIVE_FILES+=("$curl_config")
@@ -592,9 +593,29 @@ verify_cloudflare_token() {
     rm -f -- "$curl_config"
     fail "无法访问 Cloudflare API，请检查服务器网络。"
   fi
-  rm -f -- "$curl_config"
   [[ "$(printf '%s' "$response" | jq -r '.success // false')" == "true" ]] || fail "Cloudflare API Token 无效或无法验证。"
-  success "Cloudflare API Token 验证通过。"
+
+  {
+    printf 'silent\n'
+    printf 'show-error\n'
+    printf 'compressed\n'
+    printf 'connect-timeout = 10\n'
+    printf 'max-time = 30\n'
+    printf 'url = "https://api.cloudflare.com/client/v4/zones?per_page=50&status=active"\n'
+    printf 'header = "Authorization: Bearer %s"\n' "$CLOUDFLARE_TOKEN"
+  } >"$curl_config"
+  if ! zones_response="$(curl --config "$curl_config")"; then
+    rm -f -- "$curl_config"
+    fail "无法读取 Cloudflare Zone 列表，请检查服务器网络和 Token 权限。"
+  fi
+  rm -f -- "$curl_config"
+  [[ "$(printf '%s' "$zones_response" | jq -r '.success // false')" == "true" ]] || fail "Cloudflare Token 有效，但无权读取 Zone 列表。请增加 Zone:Zone:Read 权限。"
+  CLOUDFLARE_ZONE_NAME="$(
+    printf '%s' "$zones_response" |
+      jq -r --arg domain "$DOMAIN" '[.result[]?.name as $zone | select($domain == $zone or ($domain | endswith("." + $zone))) | $zone] | sort_by(length) | last // empty'
+  )"
+  [[ -n "$CLOUDFLARE_ZONE_NAME" ]] || fail "Cloudflare Token 有效，但无法访问 $DOMAIN 所属 Zone。请把 Token 资源范围包含该域名，并授予 Zone:Zone:Read 与 Zone:DNS:Edit。"
+  success "Cloudflare API Token 已验证，可访问 Zone：$CLOUDFLARE_ZONE_NAME。"
 }
 
 find_onepanel_website() {
@@ -897,7 +918,7 @@ wait_for_onepanel_certificate() {
 }
 
 find_reusable_onepanel_certificate() {
-  local body record today
+  local body record today candidates
   today="$(date -u +%Y-%m-%d)"
   body="$(jq -cn --arg domain "$DOMAIN" '{page:1,pageSize:100,acmeAccountID:"",domain:$domain,orderBy:"expire_date",order:"descending"}')"
   onepanel_api POST "/websites/ssl/search" "$body"
@@ -917,7 +938,19 @@ find_reusable_onepanel_certificate() {
         last // empty'
   )"
 
-  [[ -n "$record" ]] || return 1
+  if [[ -z "$record" ]]; then
+    candidates="$(
+      printf '%s' "$ONEPANEL_RESPONSE" |
+        jq -r '.data.items[]? | "ID=\(.id // "-")，域名=\(.primaryDomain // "-")，状态=\(.status // "-")，到期=\((.expireDate // "-")[0:10])，来源=\(.provider // "-")"'
+    )"
+    if [[ -n "$candidates" ]]; then
+      warn "1Panel 中找到了相关证书记录，但没有可复用的有效证书："
+      while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] && warn "  $candidate"
+      done <<<"$candidates"
+    fi
+    return 1
+  fi
   SSL_ID="$(printf '%s' "$record" | jq -r '.id // empty')"
   [[ "$SSL_ID" =~ ^[1-9][0-9]*$ ]] || return 1
   REUSED_CERTIFICATE=1
@@ -931,7 +964,7 @@ ensure_onepanel_certificate() {
   onepanel_api POST "/websites/ssl/search" "$search_body"
   ssl_record="$(
     printf '%s' "$ONEPANEL_RESPONSE" |
-      jq -c --arg domain "$DOMAIN" '[.data.items[]? | select(.primaryDomain == $domain and .provider == "dnsAccount" and (.id // 0) > 0)] | sort_by(.id) | last // empty'
+      jq -c --arg domain "$DOMAIN" '[.data.items[]? | select(.primaryDomain == $domain and .provider == "dnsAccount" and (.id // 0) > 0 and (.status // "") != "error" and (.status // "") != "applyError")] | sort_by(.id) | last // empty'
   )"
 
   if [[ -z "$ssl_record" ]]; then

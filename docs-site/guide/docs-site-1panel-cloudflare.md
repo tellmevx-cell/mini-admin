@@ -66,7 +66,7 @@ bash deploy-mini-admin-docs.sh --domain docs.example.com
 脚本会自动识别 1Panel V2 或 V1 API，并使用对应的接口、签名算法和请求字段，自动完成反向代理网站和 HTTPS 绑定。它会优先查找覆盖目标域名且尚未过期的现有证书；找到后直接复用，不再申请证书，也不要求 Cloudflare Token。没有可用证书时，才创建 Cloudflare DNS 与 Let's Encrypt ACME 账户并申请新证书。首次执行前准备相应的最小权限凭证：
 
 1. 在 1Panel 左下角用户菜单的 **API 接口** 中启用 API，IP 白名单加入 `127.0.0.1`，复制 API Key。
-2. 仅在 1Panel 没有现成有效证书时，在 Cloudflare 的 **My Profile -> API Tokens** 使用 `Edit zone DNS` 模板创建 Token，并把资源范围限制到文档域名所在的单个 Zone。
+2. 仅在 1Panel 没有现成有效证书时，在 Cloudflare 的 **My Profile -> API Tokens** 使用 `Edit zone DNS` 模板创建 Token，确认包含 `Zone:Zone:Read` 和 `Zone:DNS:Edit`，并把资源范围限制到文档域名所在的单个 Zone。
 3. 不要使用 Cloudflare Global API Key，也不要把任何 Token 写进脚本或提交到 Git。
 
 > API Key、Token 或密码一旦出现在截图、聊天记录或公开日志中，应立即在对应平台重置，旧密钥不再继续使用。
@@ -327,6 +327,10 @@ docker info
 ### 证书申请提示 `AcmeAccountID required`
 
 部分 1Panel V2 版本在创建 ACME 账户后会暂时返回占位 ID `0`。最新版部署脚本会重新查询持久化后的真实账户 ID，再继续申请证书。出现该错误时重新下载脚本并执行即可，不需要删除已经创建的 ACME 或 Cloudflare DNS 账户。
+
+### Cloudflare 提示 `failed to find zone` 或 `zone could not be found`
+
+Token 本身有效不代表它能访问目标 Zone。确认 Token 同时具备 `Zone:Zone:Read`、`Zone:DNS:Edit`，资源范围包含目标域名所属的根 Zone。最新版脚本会在调用 1Panel 签发前读取 Cloudflare Zone 列表并校验权限，不再反复触发已经失败的证书记录。
 
 ### Cloudflare 显示 521
 
