@@ -100,11 +100,14 @@ bash deploy-mini-admin-docs.sh \
 
 - 在停止或替换现有文档容器之前完成 Cloudflare Token、1Panel API 版本和鉴权检查。
 - 优先通过本机 `1pctl` 获取真实面板端口，防止把文档端口 `8090` 当成 1Panel API 端口。
-- 域名不存在时创建指向 `http://127.0.0.1:8090` 的反向代理网站。
+- 先通过 Cloudflare DNS 验证签发证书，再让 1Panel V2 直接创建 HTTPS `443` 站点，不绑定宿主机 `80`。
+- 域名不存在时创建指向 `http://127.0.0.1:8090` 的 HTTPS 反向代理网站。
 - 域名已被非反向代理网站占用时停止，不覆盖原网站。
 - 现有代理目标不是当前文档站时停止，不静默修改代理地址。
 - 复用同域名的有效证书，并确保开启自动续签。
 - 证书申请失败时显示 1Panel 返回的错误，不输出 Cloudflare Token。
+
+自动模式默认保留服务器上现有的 `80` 端口服务，MiniAdmin 文档站只使用公网 HTTPS `443`。请在 Cloudflare 开启 **Always Use HTTPS**，由 Cloudflare 在边缘把访客的 HTTP 请求跳转到 HTTPS，而不是让源站占用 `80`。
 
 通常不需要指定 API 版本。如果自动探测结果与实际不符，可显式追加 `--onepanel-api-version v1` 或 `--onepanel-api-version v2`。
 
@@ -217,7 +220,7 @@ nslookup docs.example.com
 
 ## 5. 配置 HTTPS（手动模式）
 
-使用了 `--auto-ssl` 时，证书申请、自动续签、证书绑定和 HTTP 跳转 HTTPS 均已完成，只需确认 Cloudflare 为 `Full (strict)`。
+使用了 `--auto-ssl` 时，证书申请、自动续签和仅 HTTPS 绑定均已完成；源站不会占用 `80`。确认 Cloudflare 为 `Full (strict)`，并由 Cloudflare 的 **Always Use HTTPS** 处理 HTTP 跳转。
 
 在 1Panel 网站的 **HTTPS** 页面配置证书，两种方式任选一种：
 
@@ -322,7 +325,7 @@ docker info
 
 ### Cloudflare 显示 521
 
-源站 80/443 未监听、防火墙未放行、1Panel OpenResty 未启动，或者 DNS 指向错误 IP。8090 无需对公网放行。
+源站 `443` 未监听、防火墙未放行、1Panel OpenResty 未启动，或者 DNS 指向错误 IP。自动模式不要求源站 `80`，`8090` 也无需对公网放行。
 
 ### Cloudflare 显示 525 或 526
 
