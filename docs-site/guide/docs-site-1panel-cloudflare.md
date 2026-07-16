@@ -110,19 +110,6 @@ bash deploy-mini-admin-docs.sh \
 
 自动模式保留服务器上现有的 `80/443` 服务，MiniAdmin 文档站默认使用公网 HTTPS `8443`，访问地址需要显式携带端口，例如 `https://docs.example.com:8443`。Cloudflare 默认支持代理 `2053`、`2083`、`2087`、`2096` 和 `8443` 等 HTTPS 端口，但 `8443` 默认不参与 CDN 缓存；端口范围以 [Cloudflare 官方网络端口说明](https://developers.cloudflare.com/fundamentals/reference/network-ports/) 为准。
 
-#### 与现有网站安全共享 443
-
-如果 `https://docs.example.com:8443` 已正常，而无端口地址被服务器上的其他默认网站接管，可以运行配套修复脚本。HTTPS 不写端口时必然使用 `443`；该脚本不会替换 443 上的现有网站，而是通过 1Panel 域名管理接口，仅给文档网站增加 `docs.example.com:443` 绑定，由 OpenResty 按 SNI/Host 分流：
-
-```bash
-curl -fsSL https://gitee.com/baijincom/mini-admin/raw/main/repair-mini-admin-docs-default-https.sh \
-  -o repair-mini-admin-docs-default-https.sh
-chmod 700 repair-mini-admin-docs-default-https.sh
-bash repair-mini-admin-docs-default-https.sh --domain docs.example.com
-```
-
-脚本会确认目标网站确实代理到 `127.0.0.1:8090`，检查是否已有 443 绑定，新增后通过本机 SNI 请求验证；验证失败时自动删除本次新增绑定。其他域名、sub2api 等已有网站不会被修改。
-
 通常不需要指定 API 版本。如果自动探测结果与实际不符，可显式追加 `--onepanel-api-version v1` 或 `--onepanel-api-version v2`。
 
 #### 1Panel API 排查
