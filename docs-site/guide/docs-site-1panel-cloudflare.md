@@ -323,6 +323,10 @@ docker info
 
 为 Docker 配置国内镜像加速，或通过 `MINIADMIN_DOCS_IMAGE` 指定服务器可访问的镜像仓库。脚本只在本地没有镜像或显式传入 `--pull` 时拉取。
 
+### 证书申请提示 `AcmeAccountID required`
+
+部分 1Panel V2 版本在创建 ACME 账户后会暂时返回占位 ID `0`。最新版部署脚本会重新查询持久化后的真实账户 ID，再继续申请证书。出现该错误时重新下载脚本并执行即可，不需要删除已经创建的 ACME 或 Cloudflare DNS 账户。
+
 ### Cloudflare 显示 521
 
 源站 `443` 未监听、防火墙未放行、1Panel OpenResty 未启动，或者 DNS 指向错误 IP。自动模式不要求源站 `80`，`8090` 也无需对公网放行。

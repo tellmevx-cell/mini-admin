@@ -732,7 +732,7 @@ ensure_onepanel_website() {
     fi
     onepanel_api POST "/websites" "$body"
     find_onepanel_website
-    [[ "$WEBSITE_ID" =~ ^[0-9]+$ ]] || fail "1Panel 网站创建完成，但无法查询到 $DOMAIN。"
+    [[ "$WEBSITE_ID" =~ ^[1-9][0-9]*$ ]] || fail "1Panel 网站创建完成，但无法查询到 $DOMAIN 的有效网站 ID。"
   fi
 
   onepanel_api GET "/websites/$WEBSITE_ID"
@@ -746,14 +746,14 @@ ensure_onepanel_website() {
 }
 
 ensure_onepanel_acme_account() {
-  local body key_type="EC256"
+  local body key_type="EC256" attempt
   if [[ "$ONEPANEL_API_VERSION" == "v1" ]]; then
     key_type="P256"
   fi
   onepanel_api POST "/websites/acme/search" '{"page":1,"pageSize":100}'
   ACME_ACCOUNT_ID="$(
     printf '%s' "$ONEPANEL_RESPONSE" |
-      jq -r --arg email "$ACME_EMAIL" '[.data.items[]? | select(.email == $email and .type == "letsencrypt")] | first | .id // empty'
+      jq -r --arg email "$ACME_EMAIL" '[.data.items[]? | select(.email == $email and .type == "letsencrypt" and (.id // 0) > 0)] | first | .id // empty'
   )"
 
   if [[ -z "$ACME_ACCOUNT_ID" ]]; then
@@ -771,10 +771,21 @@ ensure_onepanel_acme_account() {
       }'
     )"
     onepanel_api POST "/websites/acme" "$body"
-    ACME_ACCOUNT_ID="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.id // empty')"
+    # Some 1Panel V2 releases return a placeholder ID of 0 after creation.
+    # Query the persisted account instead of forwarding that invalid ID.
+    ACME_ACCOUNT_ID=""
+    for attempt in {1..10}; do
+      onepanel_api POST "/websites/acme/search" '{"page":1,"pageSize":100}'
+      ACME_ACCOUNT_ID="$(
+        printf '%s' "$ONEPANEL_RESPONSE" |
+          jq -r --arg email "$ACME_EMAIL" '[.data.items[]? | select(.email == $email and .type == "letsencrypt" and (.id // 0) > 0)] | first | .id // empty'
+      )"
+      [[ "$ACME_ACCOUNT_ID" =~ ^[1-9][0-9]*$ ]] && break
+      sleep 1
+    done
   fi
 
-  [[ "$ACME_ACCOUNT_ID" =~ ^[0-9]+$ ]] || fail "无法创建或查询 1Panel ACME 账户。"
+  [[ "$ACME_ACCOUNT_ID" =~ ^[1-9][0-9]*$ ]] || fail "无法创建或查询有效的 1Panel ACME 账户 ID（1Panel 返回了空值或 0）。"
   success "Let's Encrypt ACME 账户已就绪（ID: $ACME_ACCOUNT_ID）。"
 }
 
@@ -786,7 +797,7 @@ ensure_onepanel_dns_account() {
   onepanel_api POST "/websites/dns/search" '{"page":1,"pageSize":100}'
   DNS_ACCOUNT_ID="$(
     printf '%s' "$ONEPANEL_RESPONSE" |
-      jq -r --arg name "$account_name" '[.data.items[]? | select(.name == $name and .type == "CloudFlare")] | first | .id // empty'
+      jq -r --arg name "$account_name" '[.data.items[]? | select(.name == $name and .type == "CloudFlare" and (.id // 0) > 0)] | first | .id // empty'
   )"
 
   if [[ -z "$DNS_ACCOUNT_ID" ]]; then
@@ -802,7 +813,7 @@ ensure_onepanel_dns_account() {
     onepanel_api POST "/websites/dns/search" '{"page":1,"pageSize":100}'
     DNS_ACCOUNT_ID="$(
       printf '%s' "$ONEPANEL_RESPONSE" |
-        jq -r --arg name "$account_name" '[.data.items[]? | select(.name == $name and .type == "CloudFlare")] | first | .id // empty'
+        jq -r --arg name "$account_name" '[.data.items[]? | select(.name == $name and .type == "CloudFlare" and (.id // 0) > 0)] | first | .id // empty'
     )"
   else
     log "更新现有 1Panel Cloudflare DNS 账户凭证。"
@@ -817,7 +828,7 @@ ensure_onepanel_dns_account() {
     onepanel_api POST "/websites/dns/update" "$body"
   fi
 
-  [[ "$DNS_ACCOUNT_ID" =~ ^[0-9]+$ ]] || fail "无法创建或查询 1Panel Cloudflare DNS 账户。"
+  [[ "$DNS_ACCOUNT_ID" =~ ^[1-9][0-9]*$ ]] || fail "无法创建或查询有效的 1Panel Cloudflare DNS 账户 ID。"
   success "Cloudflare DNS 账户已就绪（ID: $DNS_ACCOUNT_ID）。"
 }
 
@@ -881,12 +892,12 @@ wait_for_onepanel_certificate() {
 }
 
 ensure_onepanel_certificate() {
-  local body ssl_record status
-  body="$(jq -cn --arg domain "$DOMAIN" '{page:1,pageSize:100,acmeAccountID:"",domain:$domain,orderBy:"updated_at",order:"descending"}')"
-  onepanel_api POST "/websites/ssl/search" "$body"
+  local body search_body ssl_record status attempt
+  search_body="$(jq -cn --arg domain "$DOMAIN" '{page:1,pageSize:100,acmeAccountID:"",domain:$domain,orderBy:"updated_at",order:"descending"}')"
+  onepanel_api POST "/websites/ssl/search" "$search_body"
   ssl_record="$(
     printf '%s' "$ONEPANEL_RESPONSE" |
-      jq -c --arg domain "$DOMAIN" '[.data.items[]? | select(.primaryDomain == $domain and .provider == "dnsAccount")] | sort_by(.id) | last // empty'
+      jq -c --arg domain "$DOMAIN" '[.data.items[]? | select(.primaryDomain == $domain and .provider == "dnsAccount" and (.id // 0) > 0)] | sort_by(.id) | last // empty'
   )"
 
   if [[ -z "$ssl_record" ]]; then
@@ -895,6 +906,22 @@ ensure_onepanel_certificate() {
     onepanel_api POST "/websites/ssl" "$body"
     SSL_ID="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.id // empty')"
     status="init"
+    if [[ ! "$SSL_ID" =~ ^[1-9][0-9]*$ ]]; then
+      SSL_ID=""
+      for attempt in {1..10}; do
+        onepanel_api POST "/websites/ssl/search" "$search_body"
+        ssl_record="$(
+          printf '%s' "$ONEPANEL_RESPONSE" |
+            jq -c --arg domain "$DOMAIN" '[.data.items[]? | select(.primaryDomain == $domain and .provider == "dnsAccount" and (.id // 0) > 0)] | sort_by(.id) | last // empty'
+        )"
+        if [[ -n "$ssl_record" ]]; then
+          SSL_ID="$(printf '%s' "$ssl_record" | jq -r '.id // empty')"
+          status="$(printf '%s' "$ssl_record" | jq -r '.status // "init"')"
+        fi
+        [[ "$SSL_ID" =~ ^[1-9][0-9]*$ ]] && break
+        sleep 1
+      done
+    fi
   else
     SSL_ID="$(printf '%s' "$ssl_record" | jq -r '.id')"
     status="$(printf '%s' "$ssl_record" | jq -r '.status // empty')"
@@ -913,7 +940,7 @@ ensure_onepanel_certificate() {
     fi
   fi
 
-  [[ "$SSL_ID" =~ ^[0-9]+$ ]] || fail "1Panel 未返回有效的证书 ID。"
+  [[ "$SSL_ID" =~ ^[1-9][0-9]*$ ]] || fail "1Panel 未返回有效的证书 ID。"
   wait_for_onepanel_certificate
 }
 
