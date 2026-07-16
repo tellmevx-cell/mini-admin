@@ -34,6 +34,7 @@ export default defineConfig({
             { text: '项目介绍', link: '/guide/introduction' },
             { text: '快速开始', link: '/guide/quick-start' },
             { text: '单脚本服务器安装', link: '/guide/server-install-script' },
+            { text: '文档站部署', link: '/guide/docs-site-1panel-cloudflare' },
             { text: '一键部署', link: '/guide/docker-compose#一键部署脚本' },
             { text: 'Docker Compose', link: '/guide/docker-compose' },
             { text: '网关与微服务', link: '/guide/gateway-microservices' },

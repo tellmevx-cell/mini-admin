@@ -14,7 +14,7 @@
 [![Frontend](https://img.shields.io/badge/Vue-3-42b883.svg)](frontend/vue-vben-admin)
 [![Docs](https://img.shields.io/badge/Docs-VitePress-646cff.svg)](docs-site)
 
-[功能总览](#功能概览) · [界面预览](#界面预览) · [快速开始](#快速开始) · [单脚本服务器安装](docs-site/guide/server-install-script.md) · [Docker 部署](docs-site/guide/docker-compose.md) · [二开文档](docs-site/index.md) · [参与贡献](CONTRIBUTING.md)
+[功能总览](#功能概览) · [界面预览](#界面预览) · [快速开始](#快速开始) · [单脚本服务器安装](docs-site/guide/server-install-script.md) · [文档站部署](docs-site/guide/docs-site-1panel-cloudflare.md) · [Docker 部署](docs-site/guide/docker-compose.md) · [二开文档](docs-site/index.md) · [参与贡献](CONTRIBUTING.md)
 
 ## 简介
 
