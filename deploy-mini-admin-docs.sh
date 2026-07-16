@@ -64,7 +64,7 @@ MiniAdmin 文档站终端部署脚本
   --onepanel-url URL 1Panel 地址；本机默认通过 1pctl 自动识别
   --onepanel-api-version VERSION
                      1Panel API 版本，支持 auto、v1、v2，默认 auto
-  --site-port PORT   1Panel 站点端口；V2 默认直接使用 HTTPS 443，不使用 80
+  --site-port PORT   1Panel HTTPS 端口；默认自动选择 8443 等 Cloudflare 支持的备用端口
   --onepanel-insecure
                      允许访问使用自签证书的 1Panel HTTPS 地址
   --ssl-timeout SEC  等待证书签发的秒数，默认 900
@@ -360,7 +360,12 @@ prepare_auto_ssl() {
     [[ "$SITE_PORT" =~ ^[0-9]+$ ]] || fail "--site-port 必须是端口数字或 auto。"
     ((SITE_PORT >= 1 && SITE_PORT <= 65535)) || fail "--site-port 必须在 1-65535 之间。"
     [[ "$SITE_PORT" -ne 80 ]] || fail "自动 HTTPS 模式不会使用宿主机 80 端口。"
+    [[ "$SITE_PORT" -ne 443 ]] || fail "自动 HTTPS 模式不会使用宿主机 443 端口。"
     [[ "$SITE_PORT" -ne "$PORT" ]] || fail "1Panel 站点端口不能与文档容器端口 $PORT 相同。"
+    case "$SITE_PORT" in
+      2053|2083|2087|2096|8443) ;;
+      *) fail "--site-port 仅支持 Cloudflare 可代理的备用 HTTPS 端口：2053、2083、2087、2096、8443。" ;;
+    esac
   fi
 
   ONEPANEL_URL="${ONEPANEL_URL%/}"
@@ -658,40 +663,26 @@ port_is_listening() {
 select_site_port() {
   local candidate panel_port="${ONEPANEL_URL##*:}"
   if [[ "$SITE_PORT" != "auto" ]]; then
-    if [[ "$ONEPANEL_API_VERSION" == "v1" ]] && port_is_listening "$SITE_PORT"; then
-      fail "指定的 1Panel V1 过渡端口 $SITE_PORT 已被占用，请更换 --site-port。"
-    fi
-    if [[ "$ONEPANEL_API_VERSION" == "v2" && "$SITE_PORT" -ne 443 ]]; then
-      warn "V2 使用非 443 HTTPS 端口时，需要额外配置 Cloudflare Origin Rule。推荐保持默认 443。"
-    fi
-    success "将使用指定的非 80 站点端口：$SITE_PORT。"
+    port_is_listening "$SITE_PORT" && fail "指定的 HTTPS 端口 $SITE_PORT 已被占用，请更换 --site-port。"
+    success "将使用指定的 Cloudflare 备用 HTTPS 端口：$SITE_PORT。"
     return
   fi
 
-  if [[ "$ONEPANEL_API_VERSION" == "v2" ]]; then
-    SITE_PORT=443
-    if port_is_listening "$SITE_PORT"; then
-      log "443 已有监听，1Panel 将检查它是否可由 OpenResty 共享。"
-    fi
-    success "1Panel V2 将直接创建 HTTPS 443 站点，不绑定 80。"
-    return
-  fi
-
-  for candidate in 8081 8082 8083 8880 9080 10080 18080; do
+  for candidate in 8443 2053 2083 2087 2096; do
     if [[ "$candidate" -eq "$PORT" || "$candidate" == "$panel_port" ]]; then
       continue
     fi
     if ! port_is_listening "$candidate"; then
       SITE_PORT="$candidate"
-      success "已为 1Panel V1 选择临时非 80 端口：$SITE_PORT。"
+      success "已选择 Cloudflare 支持的备用 HTTPS 端口：$SITE_PORT，不占用 80/443。"
       return
     fi
   done
-  fail "未找到可用的 1Panel V1 非 80 过渡端口，请通过 --site-port 指定一个未占用端口。"
+  fail "Cloudflare 支持的备用 HTTPS 端口均已占用：8443、2053、2083、2087、2096。"
 }
 
 ensure_onepanel_website() {
-  local group_id alias task_id proxy_url body site_type site_proxy primary_domain
+  local group_id alias task_id proxy_url body site_type site_proxy primary_domain existing_port
   proxy_url="http://127.0.0.1:$PORT"
   find_onepanel_website
 
@@ -764,6 +755,15 @@ ensure_onepanel_website() {
   onepanel_api GET "/websites/$WEBSITE_ID"
   site_type="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.type // empty')"
   site_proxy="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.proxy // empty')"
+  if [[ "$SITE_PORT" == "auto" ]]; then
+    primary_domain="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.primaryDomain // empty')"
+    existing_port="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.domains[0].port // empty')"
+    if [[ ! "$existing_port" =~ ^[0-9]+$ && "$primary_domain" == *:* ]]; then
+      existing_port="${primary_domain##*:}"
+    fi
+    [[ "$existing_port" =~ ^[0-9]+$ ]] || fail "无法识别现有 1Panel 网站的 HTTPS 端口，请通过 --site-port 明确指定。"
+    SITE_PORT="$existing_port"
+  fi
   [[ "$site_type" == "proxy" ]] || fail "域名 $DOMAIN 已被非反向代理网站占用，未自动修改现有网站。"
   if [[ "$site_proxy" != "$proxy_url" && "$site_proxy" != "127.0.0.1:$PORT" ]]; then
     fail "域名 $DOMAIN 已代理到 $site_proxy，预期为 $proxy_url；为避免覆盖现有配置已停止。"
@@ -1012,12 +1012,13 @@ ensure_onepanel_certificate() {
 }
 
 attach_onepanel_certificate() {
-  local algorithm body enabled attached_id http_config
+  local algorithm body enabled attached_id attached_port http_config
   algorithm="ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK"
   body="$(
     jq -cn \
       --argjson websiteId "$WEBSITE_ID" \
       --argjson sslId "$SSL_ID" \
+      --argjson sitePort "$SITE_PORT" \
       --arg algorithm "$algorithm" \
       '{
         websiteId: $websiteId,
@@ -1034,7 +1035,7 @@ attach_onepanel_certificate() {
         algorithm: $algorithm,
         hsts: true,
         hstsIncludeSubDomains: false,
-        httpsPorts: [443],
+        httpsPorts: [$sitePort],
         http3: false
       }'
   )"
@@ -1042,9 +1043,10 @@ attach_onepanel_certificate() {
   onepanel_api GET "/websites/$WEBSITE_ID/https"
   enabled="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.enable // false')"
   attached_id="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.SSL.id // empty')"
+  attached_port="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.httpsPorts[0] // empty')"
   http_config="$(printf '%s' "$ONEPANEL_RESPONSE" | jq -r '.data.httpConfig // empty')"
-  [[ "$enabled" == "true" && "$attached_id" == "$SSL_ID" && "$http_config" == "HTTPSOnly" ]] || fail "1Panel 未确认仅 HTTPS 的证书绑定结果。"
-  success "1Panel 已绑定证书并启用仅 HTTPS 模式，未占用 80。"
+  [[ "$enabled" == "true" && "$attached_id" == "$SSL_ID" && "$attached_port" == "$SITE_PORT" && "$http_config" == "HTTPSOnly" ]] || fail "1Panel 未确认 HTTPS $SITE_PORT 的证书绑定结果。"
+  success "1Panel 已绑定证书并启用 HTTPS $SITE_PORT，未占用 80/443。"
 }
 
 configure_auto_ssl() {
@@ -1309,7 +1311,7 @@ print_next_steps() {
     else
       printf '  - Let\x27s Encrypt 证书：已签发并启用自动续签\n'
     fi
-    printf '  - HTTPS：已启用，仅监听 HTTPS 站点端口，不使用宿主机 80\n'
+    printf '  - HTTPS：已启用端口 %s，不使用宿主机 80/443\n' "$SITE_PORT"
   else
     printf '\n1Panel 后续配置：\n'
     printf '  1. 创建反向代理网站，主域名填写 %s。\n' "$DOMAIN"
@@ -1320,8 +1322,8 @@ print_next_steps() {
   printf '  1. 添加 %s 指向服务器公网 IP 的 A 记录。\n' "$DOMAIN"
   printf '  2. 确认源站 HTTPS 正常后开启橙色云。\n'
   printf '  3. SSL/TLS 模式选择 Full (strict)。\n'
-  printf '\n注意：Cloudflare 橙色云不直接代理 8090。公网访问应使用 https://%s，\n' "$DOMAIN"
-  printf '由 1Panel 的 443 端口反向代理到本机 %s。\n' "$PORT"
+  printf '\n注意：Cloudflare 橙色云不直接代理 8090。公网访问应使用 https://%s:%s，\n' "$DOMAIN" "$SITE_PORT"
+  printf '由 1Panel 的 HTTPS %s 端口反向代理到本机 %s。\n' "$SITE_PORT" "$PORT"
 }
 
 main() {
