@@ -10,13 +10,16 @@ import { Page } from '@vben/common-ui';
 import {
   Button,
   DatePicker,
+  Drawer,
   Form,
   FormItem,
   Input,
   Modal,
   Popconfirm,
+  Progress,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Textarea,
@@ -28,12 +31,17 @@ import {
   createTenantApi,
   disableTenantApi,
   enableTenantApi,
+  getTenantLifecycleRecordsApi,
   getTenantInitializationTemplatesApi,
   getTenantListApi,
   type TenantItem,
   type TenantInitializationStatus,
+  type TenantLifecycleEventType,
+  type TenantLifecycleRecord,
   type TenantInitializationTemplate,
+  type TenantResourceQuotaStatus,
   type TenantStatus,
+  renewTenantApi,
   updateTenantApi,
 } from '#/api/platform/tenant';
 import {
@@ -57,10 +65,24 @@ interface TenantFormState {
   remark: string;
 }
 
+interface RenewFormState {
+  expireAt: Dayjs | null;
+  reactivate: boolean;
+  remark: string;
+}
+
 const loading = ref(false);
 const saving = ref(false);
 const statusSavingId = ref('');
 const modalOpen = ref(false);
+const renewModalOpen = ref(false);
+const renewSaving = ref(false);
+const renewingTenant = ref<TenantItem>();
+const lifecycleDrawerOpen = ref(false);
+const lifecycleLoading = ref(false);
+const lifecycleTenant = ref<TenantItem>();
+const lifecycleRecords = ref<TenantLifecycleRecord[]>([]);
+const lifecycleTotal = ref(0);
 const editingTenant = ref<TenantItem>();
 const tenants = ref<TenantItem[]>([]);
 const initializationTemplates = ref<TenantInitializationTemplate[]>([]);
@@ -92,6 +114,12 @@ const formState = reactive<TenantFormState>({
   remark: '',
 });
 
+const renewFormState = reactive<RenewFormState>({
+  expireAt: null,
+  reactivate: true,
+  remark: '',
+});
+
 const statusOptions: Array<{ label: string; value: TenantStatus }> = [
   { label: '待开通', value: 'Pending' },
   { label: '启用', value: 'Active' },
@@ -103,13 +131,22 @@ const columns = [
   { dataIndex: 'code', title: '租户编码', width: 160 },
   { dataIndex: 'name', title: '租户名称', width: 180 },
   { dataIndex: 'packageName', title: '套餐', width: 150 },
+  { dataIndex: 'resourceUsage', title: '资源用量', width: 260 },
   { dataIndex: 'status', title: '状态', width: 110 },
   { dataIndex: 'initialization', title: '初始化', width: 190 },
   { dataIndex: 'contact', title: '联系人', width: 220 },
   { dataIndex: 'expireAt', title: '到期时间', width: 190 },
   { dataIndex: 'updatedAt', title: '更新时间', width: 190 },
   { dataIndex: 'remark', title: '备注' },
-  { dataIndex: 'action', title: '操作', width: 180 },
+  { dataIndex: 'action', title: '操作', width: 300 },
+];
+
+const lifecycleColumns = [
+  { dataIndex: 'eventType', title: '事件', width: 120 },
+  { dataIndex: 'change', title: '变化', width: 210 },
+  { dataIndex: 'operator', title: '操作人', width: 130 },
+  { dataIndex: 'description', title: '说明', width: 300 },
+  { dataIndex: 'createdAt', title: '时间', width: 180 },
 ];
 
 const pagination = computed<TablePaginationConfig>(() => ({
@@ -127,6 +164,7 @@ const canCreate = computed(() => hasAccessByCodes(['platform:tenant:create']));
 const canUpdate = computed(() => hasAccessByCodes(['platform:tenant:update']));
 const canEnable = computed(() => hasAccessByCodes(['platform:tenant:enable']));
 const canDisable = computed(() => hasAccessByCodes(['platform:tenant:disable']));
+const canQuery = computed(() => hasAccessByCodes(['platform:tenant:query']));
 const defaultExpireTime = dayjs().hour(23).minute(59).second(59);
 
 async function loadTenants() {
@@ -216,6 +254,43 @@ function openEditModal(tenant: Record<string, any> | TenantItem) {
   formState.adminEmail = '';
   formState.adminPassword = '';
   modalOpen.value = true;
+}
+
+function openRenewModal(tenant: Record<string, any> | TenantItem) {
+  const currentTenant = tenant as TenantItem;
+  const currentExpireAt = currentTenant.expireAt
+    ? dayjs(currentTenant.expireAt)
+    : null;
+  const baseDate = currentExpireAt?.isAfter(dayjs()) ? currentExpireAt : dayjs();
+  renewingTenant.value = currentTenant;
+  renewFormState.expireAt = baseDate
+    .add(1, 'year')
+    .hour(23)
+    .minute(59)
+    .second(59)
+    .millisecond(0);
+  renewFormState.reactivate = currentTenant.status !== 'Active';
+  renewFormState.remark = '';
+  renewModalOpen.value = true;
+}
+
+async function openLifecycleDrawer(tenant: Record<string, any> | TenantItem) {
+  const currentTenant = tenant as TenantItem;
+  lifecycleTenant.value = currentTenant;
+  lifecycleRecords.value = [];
+  lifecycleTotal.value = 0;
+  lifecycleDrawerOpen.value = true;
+  lifecycleLoading.value = true;
+  try {
+    const result = await getTenantLifecycleRecordsApi(currentTenant.id, {
+      page: 1,
+      pageSize: 100,
+    });
+    lifecycleRecords.value = result.items;
+    lifecycleTotal.value = result.total;
+  } finally {
+    lifecycleLoading.value = false;
+  }
 }
 
 function buildPayload() {
@@ -337,6 +412,33 @@ async function submitTenant() {
   }
 }
 
+async function submitRenew() {
+  if (!renewingTenant.value || !renewFormState.expireAt) {
+    message.warning('请选择新的到期时间');
+    return;
+  }
+  if (!renewFormState.expireAt.isAfter(dayjs())) {
+    message.warning('新的到期时间必须晚于当前时间');
+    return;
+  }
+
+  renewSaving.value = true;
+  try {
+    await renewTenantApi(renewingTenant.value.id, {
+      expireAt: renewFormState.expireAt.toISOString(),
+      reactivate: renewFormState.reactivate,
+      remark: normalizeOptional(renewFormState.remark),
+    });
+    message.success(
+      renewFormState.reactivate ? '租户已续期并启用' : '租户已续期',
+    );
+    renewModalOpen.value = false;
+    await loadTenants();
+  } finally {
+    renewSaving.value = false;
+  }
+}
+
 async function switchTenantStatus(tenant: Record<string, any> | TenantItem, enable: boolean) {
   const currentTenant = tenant as TenantItem;
   statusSavingId.value = currentTenant.id;
@@ -360,6 +462,119 @@ function normalizeOptional(value: string) {
 
 function formatTime(value?: null | string) {
   return value ? new Date(value).toLocaleString() : '-';
+}
+
+function getExpiryMeta(value: Record<string, any> | TenantItem) {
+  const tenant = value as TenantItem;
+  if (!tenant.expireAt) {
+    return { color: 'blue', text: '长期有效' };
+  }
+
+  const remainingDays = dayjs(tenant.expireAt).diff(dayjs(), 'day', true);
+  if (tenant.status === 'Expired' || remainingDays <= 0) {
+    return { color: 'red', text: '已到期' };
+  }
+  if (remainingDays <= 1) {
+    return { color: 'red', text: '1天内到期' };
+  }
+  if (remainingDays <= 7) {
+    return { color: 'orange', text: `${Math.ceil(remainingDays)}天内到期` };
+  }
+  if (remainingDays <= 30) {
+    return { color: 'gold', text: `${Math.ceil(remainingDays)}天内到期` };
+  }
+  return { color: 'green', text: '有效' };
+}
+
+function getLifecycleEventLabel(eventType: TenantLifecycleEventType) {
+  return {
+    Created: '创建',
+    Disabled: '停用',
+    Enabled: '启用',
+    ExpirationChanged: '到期时间调整',
+    Expired: '自动过期',
+    ExpiryReminder: '到期提醒',
+    PackageChanged: '套餐调整',
+    Renewed: '续期',
+    Updated: '资料更新',
+  }[eventType];
+}
+
+function getLifecycleEventColor(eventType: TenantLifecycleEventType) {
+  if (eventType === 'Expired' || eventType === 'Disabled') {
+    return 'red';
+  }
+  if (eventType === 'ExpiryReminder') {
+    return 'gold';
+  }
+  if (eventType === 'Renewed' || eventType === 'Enabled') {
+    return 'green';
+  }
+  return 'blue';
+}
+
+function formatLifecycleChange(
+  value: Record<string, any> | TenantLifecycleRecord,
+) {
+  const record = value as TenantLifecycleRecord;
+  if (record.eventType === 'ExpiryReminder') {
+    return `${record.reminderDays ?? '-'} 天提醒`;
+  }
+  if (record.previousExpireAt !== record.newExpireAt) {
+    return `${formatTime(record.previousExpireAt)} -> ${formatTime(record.newExpireAt)}`;
+  }
+  if (record.fromStatus || record.toStatus) {
+    return `${record.fromStatus ?? '-'} -> ${record.toStatus ?? '-'}`;
+  }
+  return '-';
+}
+
+function getLifecycleSourceLabel(source: TenantLifecycleRecord['source']) {
+  return source === 'Manual' ? '人工操作' : '系统任务';
+}
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function quotaPercent(used: number, limit: number) {
+  return limit > 0 ? Math.min(Math.round((used / limit) * 100), 100) : 0;
+}
+
+function quotaProgressStatus(status: TenantResourceQuotaStatus) {
+  return status === 'Exhausted' ? 'exception' : 'normal';
+}
+
+function quotaProgressColor(status: TenantResourceQuotaStatus) {
+  if (status === 'Warning') {
+    return '#d97706';
+  }
+  if (status === 'Unlimited') {
+    return '#2563eb';
+  }
+  return undefined;
+}
+
+function quotaStatusLabel(status: TenantResourceQuotaStatus) {
+  return {
+    Exhausted: '已耗尽',
+    Normal: '正常',
+    Unlimited: '不限额',
+    Warning: '预警',
+  }[status];
+}
+
+function quotaStatusColor(status: TenantResourceQuotaStatus) {
+  return {
+    Exhausted: 'red',
+    Normal: 'green',
+    Unlimited: 'blue',
+    Warning: 'gold',
+  }[status];
 }
 
 function disablePastDate(current: Dayjs) {
@@ -479,6 +694,7 @@ onMounted(() => {
           :data-source="tenants"
           :loading="loading"
           :pagination="pagination"
+          :scroll="{ x: 1900 }"
           @change="handleTableChange"
         >
           <template #bodyCell="{ column, record }">
@@ -491,6 +707,62 @@ onMounted(() => {
               <Tag :color="record.packageName ? 'blue' : 'default'">
                 {{ record.packageName || '未分配' }}
               </Tag>
+            </template>
+            <template v-if="column.dataIndex === 'resourceUsage'">
+              <div class="quota-cell">
+                <div class="quota-row">
+                  <div class="quota-label">
+                    <span>
+                      用户
+                      <Tag :color="quotaStatusColor(record.userQuotaStatus)">
+                        {{ quotaStatusLabel(record.userQuotaStatus) }}
+                      </Tag>
+                    </span>
+                    <strong
+                      :class="{ exceeded: record.userQuotaStatus === 'Exhausted' }"
+                    >
+                      {{ record.usedUsers }} / {{ record.maxUsers || '不限额' }}
+                    </strong>
+                  </div>
+                  <Progress
+                    v-if="record.maxUsers > 0"
+                    :percent="quotaPercent(record.usedUsers, record.maxUsers)"
+                    :show-info="false"
+                    :status="quotaProgressStatus(record.userQuotaStatus)"
+                    :stroke-color="quotaProgressColor(record.userQuotaStatus)"
+                    size="small"
+                  />
+                </div>
+                <div class="quota-row">
+                  <div class="quota-label">
+                    <span>
+                      存储
+                      <Tag :color="quotaStatusColor(record.storageQuotaStatus)">
+                        {{ quotaStatusLabel(record.storageQuotaStatus) }}
+                      </Tag>
+                    </span>
+                    <strong
+                      :class="{
+                        exceeded: record.storageQuotaStatus === 'Exhausted',
+                      }"
+                    >
+                      {{ formatBytes(record.usedStorageBytes) }} /
+                      {{ record.maxStorageBytes ? formatBytes(record.maxStorageBytes) : '不限额' }}
+                    </strong>
+                  </div>
+                  <Progress
+                    v-if="record.maxStorageBytes > 0"
+                    :percent="quotaPercent(record.usedStorageBytes, record.maxStorageBytes)"
+                    :show-info="false"
+                    :status="quotaProgressStatus(record.storageQuotaStatus)"
+                    :stroke-color="quotaProgressColor(record.storageQuotaStatus)"
+                    size="small"
+                  />
+                </div>
+                <small v-if="record.quotaLastNotifiedAt" class="quota-notified-at">
+                  最近预警：{{ formatTime(record.quotaLastNotifiedAt) }}
+                </small>
+              </div>
             </template>
             <template v-if="column.dataIndex === 'initialization'">
               <div class="init-cell">
@@ -513,7 +785,12 @@ onMounted(() => {
               </div>
             </template>
             <template v-if="column.dataIndex === 'expireAt'">
-              {{ formatTime(record.expireAt) }}
+              <div class="expiry-cell">
+                <span>{{ formatTime(record.expireAt) }}</span>
+                <Tag :color="getExpiryMeta(record).color">
+                  {{ getExpiryMeta(record).text }}
+                </Tag>
+              </div>
             </template>
             <template v-if="column.dataIndex === 'updatedAt'">
               {{ formatTime(record.updatedAt) }}
@@ -530,6 +807,22 @@ onMounted(() => {
                   @click="openEditModal(record)"
                 >
                   编辑
+                </Button>
+                <Button
+                  v-if="canUpdate"
+                  class="table-action renew"
+                  size="small"
+                  @click="openRenewModal(record)"
+                >
+                  续期
+                </Button>
+                <Button
+                  v-if="canQuery"
+                  class="table-action history"
+                  size="small"
+                  @click="openLifecycleDrawer(record)"
+                >
+                  记录
                 </Button>
                 <Popconfirm
                   v-if="record.status === 'Active' && canDisable"
@@ -560,6 +853,7 @@ onMounted(() => {
                 <span
                   v-if="
                     !canUpdate &&
+                    !canQuery &&
                     !(record.status === 'Active' && canDisable) &&
                     !(record.status !== 'Active' && canEnable)
                   "
@@ -695,6 +989,98 @@ onMounted(() => {
         </FormItem>
       </Form>
     </Modal>
+
+    <Modal
+      v-model:open="renewModalOpen"
+      :confirm-loading="renewSaving"
+      title="租户续期"
+      width="560px"
+      @ok="submitRenew"
+    >
+      <div v-if="renewingTenant" class="renew-summary">
+        <strong>{{ renewingTenant.name }}</strong>
+        <span>{{ renewingTenant.code }}</span>
+        <Tag :color="getStatusColor(renewingTenant.status)">
+          {{ getStatusLabel(renewingTenant.status) }}
+        </Tag>
+      </div>
+      <Form layout="vertical">
+        <FormItem label="新的到期时间" required>
+          <DatePicker
+            :value="renewFormState.expireAt ?? undefined"
+            class="w-full"
+            :disabled-date="disablePastDate"
+            format="YYYY-MM-DD HH:mm:ss"
+            :show-time="{ defaultValue: defaultExpireTime }"
+            @update:value="(value) => (renewFormState.expireAt = normalizeDatePickerValue(value))"
+          />
+          <Space class="expire-shortcuts" wrap>
+            <Button size="small" @click="renewFormState.expireAt = dayjs().add(1, 'year').endOf('day')">
+              从今天起1年
+            </Button>
+            <Button size="small" @click="renewFormState.expireAt = dayjs().add(3, 'year').endOf('day')">
+              从今天起3年
+            </Button>
+          </Space>
+        </FormItem>
+        <FormItem label="恢复访问">
+          <Switch v-model:checked="renewFormState.reactivate" />
+          <span class="reactivate-hint">
+            开启后会将租户恢复为启用状态，原有会话仍需重新登录。
+          </span>
+        </FormItem>
+        <FormItem label="续期备注">
+          <Textarea
+            v-model:value="renewFormState.remark"
+            :auto-size="{ minRows: 3, maxRows: 5 }"
+            placeholder="例如：年度续期"
+          />
+        </FormItem>
+      </Form>
+    </Modal>
+
+    <Drawer
+      v-model:open="lifecycleDrawerOpen"
+      :title="`生命周期记录 · ${lifecycleTenant?.name ?? ''}`"
+      width="920"
+    >
+      <div class="lifecycle-summary">
+        <span>共 {{ lifecycleTotal }} 条记录</span>
+        <span v-if="lifecycleTenant">
+          当前到期时间：{{ formatTime(lifecycleTenant.expireAt) }}
+        </span>
+      </div>
+      <Table
+        row-key="id"
+        bordered
+        size="small"
+        :columns="lifecycleColumns"
+        :data-source="lifecycleRecords"
+        :loading="lifecycleLoading"
+        :pagination="false"
+        :scroll="{ x: 940 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'eventType'">
+            <Tag :color="getLifecycleEventColor(record.eventType)">
+              {{ getLifecycleEventLabel(record.eventType) }}
+            </Tag>
+          </template>
+          <template v-if="column.dataIndex === 'change'">
+            <span class="lifecycle-change">{{ formatLifecycleChange(record) }}</span>
+          </template>
+          <template v-if="column.dataIndex === 'operator'">
+            <div class="lifecycle-operator">
+              <span>{{ record.operatorUserName || getLifecycleSourceLabel(record.source) }}</span>
+              <small>{{ getLifecycleSourceLabel(record.source) }}</small>
+            </div>
+          </template>
+          <template v-if="column.dataIndex === 'createdAt'">
+            {{ formatTime(record.createdAt) }}
+          </template>
+        </template>
+      </Table>
+    </Drawer>
   </Page>
 </template>
 
@@ -777,6 +1163,18 @@ onMounted(() => {
   line-height: 1.5;
 }
 
+.expiry-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  line-height: 1.4;
+}
+
+.expiry-cell :deep(.ant-tag) {
+  margin-inline-end: 0;
+}
+
 .init-cell {
   display: flex;
   flex-direction: column;
@@ -794,6 +1192,57 @@ onMounted(() => {
 
 .init-cell .init-error {
   color: #ff3868;
+}
+
+.quota-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.quota-row {
+  min-width: 220px;
+}
+
+.quota-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.quota-label strong {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+.quota-label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quota-label :deep(.ant-tag) {
+  margin-inline-end: 0;
+  font-size: 10px;
+  line-height: 17px;
+}
+
+.quota-label strong.exceeded {
+  color: #ff3868;
+}
+
+.quota-row :deep(.ant-progress-line) {
+  margin: 0;
+  line-height: 1;
+}
+
+.quota-notified-at {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
 }
 
 .remark-cell {
@@ -822,9 +1271,64 @@ onMounted(() => {
   color: #2f944b;
 }
 
+.table-action.renew {
+  border-color: #3f9f70;
+  color: #27845a;
+}
+
+.table-action.history {
+  border-color: #6f87c8;
+  color: #506fba;
+}
+
 .table-action.danger {
   border-color: #ff6b93;
   color: #ff3868;
+}
+
+.renew-summary,
+.lifecycle-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 50%);
+  padding: 10px 12px;
+}
+
+.renew-summary {
+  margin-bottom: 16px;
+}
+
+.renew-summary > span,
+.lifecycle-summary {
+  color: hsl(var(--muted-foreground));
+}
+
+.reactivate-hint {
+  margin-left: 10px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.lifecycle-summary {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.lifecycle-change {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.lifecycle-operator {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lifecycle-operator small {
+  color: hsl(var(--muted-foreground));
 }
 
 :deep(.ant-table) {

@@ -71,9 +71,13 @@ services:
       Jwt__SigningKey: ${MINIADMIN_JWT_SIGNING_KEY:?Set MINIADMIN_JWT_SIGNING_KEY in .env}
       OpenPlatform__Issuer: ${MINIADMIN_OPEN_PLATFORM_ISSUER:-http://localhost:5666/}
       OpenPlatform__AllowInsecureHttp: "${MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP:-false}"
+      OpenPlatform__SigningKey: ${MINIADMIN_OPEN_PLATFORM_SIGNING_KEY:?Set MINIADMIN_OPEN_PLATFORM_SIGNING_KEY in .env}
+      OpenPlatform__EncryptionKey: ${MINIADMIN_OPEN_PLATFORM_ENCRYPTION_KEY:?Set MINIADMIN_OPEN_PLATFORM_ENCRYPTION_KEY in .env}
+      OpenPlatform__CredentialEncryptionKey: ${MINIADMIN_OPENAPI_CREDENTIAL_ENCRYPTION_KEY:?Set MINIADMIN_OPENAPI_CREDENTIAL_ENCRYPTION_KEY in .env}
       OpenPlatform__SigningCertificate__AutoGeneratePath: /app/storage/uploads/.system/openplatform-signing.pfx
       Database__Provider: MySql
       Database__InitializeOnStartup: "true"
+      Database__InitializationLockTimeoutSeconds: "${MINIADMIN_DB_INIT_LOCK_TIMEOUT_SECONDS:-180}"
       Database__SchemaManagement: Auto
       ConnectionStrings__MiniAdmin: Server=mysql;Port=3306;Database=${MINIADMIN_MYSQL_DATABASE:-mini_admin};User=${MINIADMIN_MYSQL_USER:-miniadmin};Password=${MINIADMIN_MYSQL_PASSWORD};CharSet=utf8mb4;SslMode=None;AllowPublicKeyRetrieval=True;
       Cache__Provider: Redis
@@ -89,12 +93,12 @@ services:
       - backend
       - edge
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:8080/health >/dev/null"]
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:8080/health/live >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 180s
-    stop_grace_period: 30s
+    stop_grace_period: 75s
     logging: *default-logging
 
   gateway:

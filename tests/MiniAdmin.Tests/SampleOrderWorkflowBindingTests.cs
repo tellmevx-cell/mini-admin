@@ -201,7 +201,8 @@ public sealed class SampleOrderWorkflowBindingTests
                     1,
                     true)
             ]));
-        return await workflowService.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        return Assert.IsType<WorkflowDefinitionDto>(
+            await workflowService.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
     }
 
     private static SaveSampleOrderRequest CreateOrderRequest()

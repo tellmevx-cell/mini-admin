@@ -96,6 +96,7 @@ public sealed class NotificationPolicyAppServiceTests
         var reset = await service.ResetMyAsync(userId, "WorkflowTask");
         var afterReset = await service.GetMyAsync(userId, new NotificationSubscriptionListQuery(Category: "Workflow"));
 
+        Assert.NotNull(saved);
         var item = Assert.Single(list.Items);
         Assert.Equal("WorkflowTask", saved.EventCode);
         Assert.False(saved.EnableInApp);

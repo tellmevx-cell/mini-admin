@@ -22,6 +22,14 @@ public sealed class ScheduledJob
 
     public DateTimeOffset? NextRunAt { get; set; }
 
+    public Guid? LeaseToken { get; set; }
+
+    public string? LeaseOwner { get; set; }
+
+    public DateTimeOffset? LeaseExpiresAt { get; set; }
+
+    public DateTimeOffset? LastHeartbeatAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

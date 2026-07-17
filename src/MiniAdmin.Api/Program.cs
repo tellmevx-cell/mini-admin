@@ -5,6 +5,7 @@ using MiniAdmin.Api.CodeGenerators;
 using MiniAdmin.Api.Composition;
 using MiniAdmin.Api.Endpoints;
 using MiniAdmin.Api.Hubs;
+using MiniAdmin.Api.Health;
 using MiniAdmin.Api.OpenPlatform;
 using MiniAdmin.Api.RateLimiting;
 using MiniAdmin.Application.AppBranding;
@@ -75,6 +76,8 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Scalar.AspNetCore;
 using static MiniAdmin.Api.Endpoints.EndpointHelpers;
 
@@ -94,6 +97,10 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+});
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.ShutdownTimeout = TimeSpan.FromSeconds(60);
 });
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -277,16 +284,41 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddMiniAdminApplicationServices(builder.Configuration);
+builder.Services.AddHealthChecks()
+    .AddCheck(
+        "self",
+        () => HealthCheckResult.Healthy("Process is running."),
+        tags: ["live"])
+    .AddCheck<DatabaseReadinessHealthCheck>("database", tags: ["ready"])
+    .AddCheck<PrimaryCacheReadinessHealthCheck>("primary-cache", tags: ["ready"]);
 builder.Services.AddMiniAdminDynamicApis(
     typeof(PlatformMetadataAppService).Assembly,
     typeof(SystemMonitorAppService).Assembly);
 
 var app = builder.Build();
 
+ProductionConfigurationValidator.Validate(app.Configuration, app.Environment, app.Logger);
+
+var liveHealthOptions = new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("live"),
+    ResponseWriter = HealthCheckResponseWriter.WriteAsync
+};
+var readyHealthOptions = new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = HealthCheckResponseWriter.WriteAsync
+};
+app.MapHealthChecks("/health/live", liveHealthOptions).DisableRateLimiting();
+app.MapHealthChecks("/health/ready", readyHealthOptions).DisableRateLimiting();
+app.MapHealthChecks("/health", readyHealthOptions).DisableRateLimiting();
+
 if (app.Configuration.GetValue("Database:InitializeOnStartup", true))
 {
     using var scope = app.Services.CreateScope();
+    var initializationLock = scope.ServiceProvider.GetRequiredService<IDatabaseInitializationLock>();
     var databaseInitializer = scope.ServiceProvider.GetRequiredService<IMiniAdminDatabaseInitializer>();
+    await using var databaseInitializationLease = await initializationLock.AcquireAsync();
     await databaseInitializer.InitializeAsync();
 }
 

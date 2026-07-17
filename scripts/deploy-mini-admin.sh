@@ -195,10 +195,14 @@ write_env_file() {
   local web_port="${MINIADMIN_WEB_PORT:-$DEFAULT_WEB_PORT}"
   local api_bind="${MINIADMIN_HTTP_PORT:-$DEFAULT_API_BIND}"
   local gateway_bind="${MINIADMIN_GATEWAY_PORT:-$DEFAULT_GATEWAY_BIND}"
-  local jwt_key mysql_password mysql_root_password redis_password
+  local jwt_key open_platform_signing_key open_platform_encryption_key
+  local credential_encryption_key mysql_password mysql_root_password redis_password
   local public_origin public_port server_ip allow_insecure_http
 
   jwt_key="$(random_hex 40)"
+  open_platform_signing_key="$(random_hex 40)"
+  open_platform_encryption_key="$(random_hex 40)"
+  credential_encryption_key="$(random_hex 40)"
   mysql_password="$(random_hex 24)"
   mysql_root_password="$(random_hex 24)"
   redis_password="$(random_hex 24)"
@@ -241,6 +245,9 @@ MINIADMIN_PNPM_FETCH_RETRIES=${MINIADMIN_PNPM_FETCH_RETRIES:-8}
 MINIADMIN_PNPM_NETWORK_CONCURRENCY=${MINIADMIN_PNPM_NETWORK_CONCURRENCY:-2}
 
 MINIADMIN_JWT_SIGNING_KEY=${jwt_key}
+MINIADMIN_OPEN_PLATFORM_SIGNING_KEY=${open_platform_signing_key}
+MINIADMIN_OPEN_PLATFORM_ENCRYPTION_KEY=${open_platform_encryption_key}
+MINIADMIN_OPENAPI_CREDENTIAL_ENCRYPTION_KEY=${credential_encryption_key}
 MINIADMIN_PUBLIC_ORIGIN=${public_origin}
 MINIADMIN_OPEN_PLATFORM_ISSUER=${MINIADMIN_OPEN_PLATFORM_ISSUER:-$public_origin}
 MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=${allow_insecure_http}
@@ -259,10 +266,29 @@ EOF
   chmod 600 "$ENV_FILE" || true
 }
 
+ensure_open_platform_keys() {
+  local jwt_key key value
+  jwt_key="$(load_env_value MINIADMIN_JWT_SIGNING_KEY "")"
+  for key in \
+    MINIADMIN_OPEN_PLATFORM_SIGNING_KEY \
+    MINIADMIN_OPEN_PLATFORM_ENCRYPTION_KEY \
+    MINIADMIN_OPENAPI_CREDENTIAL_ENCRYPTION_KEY; do
+    value="$(load_env_value "$key" "")"
+    if [[ -z "$value" ]]; then
+      printf '\n%s=%s\n' "$key" "$jwt_key" >> "$ENV_FILE"
+      warn "现有部署缺少 ${key}，已暂时沿用 JWT 密钥以保持兼容；请先阅读生产可靠性运行手册，再在维护窗口迁移为独立密钥。"
+    fi
+  done
+  chmod 600 "$ENV_FILE" || true
+}
+
 validate_env_file() {
   local key value
   for key in \
     MINIADMIN_JWT_SIGNING_KEY \
+    MINIADMIN_OPEN_PLATFORM_SIGNING_KEY \
+    MINIADMIN_OPEN_PLATFORM_ENCRYPTION_KEY \
+    MINIADMIN_OPENAPI_CREDENTIAL_ENCRYPTION_KEY \
     MINIADMIN_MYSQL_PASSWORD \
     MINIADMIN_MYSQL_ROOT_PASSWORD \
     MINIADMIN_REDIS_PASSWORD; do
@@ -301,6 +327,7 @@ ensure_env_file() {
     log "使用现有 .env，不覆盖已有密码。"
   fi
 
+  ensure_open_platform_keys
   validate_env_file
 }
 

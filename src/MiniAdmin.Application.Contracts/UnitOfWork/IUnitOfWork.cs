@@ -15,4 +15,6 @@ public interface IUnitOfWork
     Task RollbackAsync(CancellationToken cancellationToken = default);
 
     void AddPostCommitEvent(ILocalEvent @event);
+
+    void AddOutboxEvent(IOutboxEvent @event);
 }

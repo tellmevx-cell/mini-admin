@@ -93,6 +93,28 @@ bash /root/mini-admin-server-install.sh
 bash /root/mini-admin-server-install.sh --no-cache
 ```
 
+## 修复旧压缩包或脏目录
+
+如果 `/opt/mini-admin` 来自旧压缩包、执行过 `git init`、存在大量 `??` 文件，或 Docker 编译到了已经删除的旧源码，不要在原目录继续 `git pull`。先下载最新版安装器，再使用修复模式：
+
+```bash
+cd /root
+curl -fsSL https://gitee.com/baijincom/mini-admin/raw/main/mini-admin-server-install.sh \
+  -o mini-admin-server-install.sh
+chmod +x mini-admin-server-install.sh
+bash mini-admin-server-install.sh --repair
+```
+
+`--repair` 会按以下顺序处理：
+
+1. 从 Gitee `main` 全新克隆到同磁盘临时目录。
+2. 检查部署器、Compose 文件和验收脚本是否齐全，并拒绝已废弃的接口生成文件。
+3. 保留现有 `/opt/mini-admin/.env`，不删除任何 Docker 命名卷。
+4. 将旧源码改名为 `/opt/mini-admin.source-backup-时间戳`，再原子切换新源码。
+5. 重新构建并启动服务，最后自动运行只读验收脚本。
+
+旧源码备份不会自动删除。确认新版本稳定并核对 `.env` 后，可以择期手工清理；不要执行 `docker compose down -v`，否则会删除数据库等命名卷。
+
 ## 可选参数
 
 ```bash
@@ -109,6 +131,9 @@ bash mini-admin-server-install.sh --logs
 
 # 已有镜像时跳过构建
 bash mini-admin-server-install.sh --skip-build
+
+# 修复旧压缩包、空 Git 仓库或残留未跟踪文件
+bash mini-admin-server-install.sh --repair
 ```
 
 也可以使用环境变量 `MINIADMIN_REPO_URL`、`MINIADMIN_BRANCH` 和 `MINIADMIN_INSTALL_DIR` 设置默认值。
@@ -130,18 +155,17 @@ curl -fsS http://127.0.0.1:5666/.well-known/openid-configuration
 
 ### 安装目录已经存在但不是 Git 仓库
 
-如果该目录来自离线压缩包，请进入目录直接执行：
+如果该目录来自离线压缩包，或曾经在目录中执行过 `git init`，请使用干净源码修复模式：
 
 ```bash
-cd /opt/mini-admin
-bash deploy.sh
+bash /root/mini-admin-server-install.sh --repair
 ```
 
-也可以使用 `--dir` 换一个空目录，安装器不会删除现有目录。
+修复模式会保留 `.env`、Docker 数据卷和带时间戳的旧源码备份。也可以使用 `--dir` 换一个空目录，安装器不会删除现有目录。
 
 ### 服务器仓库有手工修改
 
-安装器会停止更新，避免覆盖配置或代码。`.env` 已被 Git 忽略，不会触发该保护；其他代码修改应先提交或备份，再重新执行。
+安装器会停止更新，避免覆盖配置、代码或让未跟踪的旧源码进入 Docker 构建。`.env` 已被 Git 忽略，不会触发该保护；其他代码修改应先提交或备份。确认服务器代码无需保留时，可以使用 `--repair`。
 
 ### 无法访问 Gitee
 

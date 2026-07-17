@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Alerts;
 using MiniAdmin.Application.Contracts.Files;
 using MiniAdmin.Application.Contracts.ScheduledJobs;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
+using MiniAdmin.Application.Contracts.Tenants;
 using MiniAdmin.Application.Contracts.UserNotifications;
 using MiniAdmin.Application.Contracts.Workflows;
 using MiniAdmin.Infrastructure.Persistence;
@@ -13,7 +15,9 @@ public sealed class ScheduledJobExecutor(
     IFileStorageService fileStorageService,
     IAlertAppService alertAppService,
     IWorkflowRepository workflowRepository,
-    INotificationDeliveryService notificationDeliveryService) : IScheduledJobExecutor
+    INotificationDeliveryService notificationDeliveryService,
+    ITenantResourceQuotaWarningService tenantResourceQuotaWarningService,
+    ITenantLifecycleService tenantLifecycleService) : IScheduledJobExecutor
 {
     public async Task<ScheduledJobExecutionResult> ExecuteAsync(
         string jobKey,
@@ -26,8 +30,55 @@ public sealed class ScheduledJobExecutor(
             "alert-scan" => await ScanAlertsAsync(cancellationToken),
             "workflow-sla-scan" => await ScanWorkflowSlaAsync(cancellationToken),
             "notification-delivery-retry" => await RetryNotificationDeliveriesAsync(cancellationToken),
+            "tenant-resource-quota-warning" => await ScanTenantResourceQuotasAsync(cancellationToken),
+            "tenant-lifecycle-scan" => await ScanTenantLifecycleAsync(cancellationToken),
             _ => new ScheduledJobExecutionResult("Failed", $"未知任务：{jobKey}")
         };
+    }
+
+    private async Task<ScheduledJobExecutionResult> ScanTenantLifecycleAsync(
+        CancellationToken cancellationToken)
+    {
+        var result = await tenantLifecycleService.ScanAsync(cancellationToken);
+        var hasAction = result.ReminderCount > 0 || result.ExpiredCount > 0;
+        var details = result.Details.Select(detail => new ScheduledJobExecutionDetail(
+            "TenantLifecycle",
+            "Tenant",
+            detail.TenantId,
+            $"{detail.TenantName}（{detail.TenantCode}）",
+            detail.EventType,
+            detail.ExpireAt.ToString("yyyy-MM-dd HH:mm:ss"),
+            detail.EventType == TenantLifecycleEventTypes.Expired ? "Critical" : "Warning",
+            $"{detail.Description}，接收人 {detail.RecipientCount} 人，本次通知 {detail.NotificationCount} 条"))
+            .ToArray();
+
+        return new ScheduledJobExecutionResult(
+            hasAction ? "Warning" : "Success",
+            $"扫描 {result.ScannedTenantCount} 个临期租户，提醒 {result.ReminderCount} 个，自动过期 {result.ExpiredCount} 个，发送 {result.NotificationCount} 条站内通知",
+            details);
+    }
+
+    private async Task<ScheduledJobExecutionResult> ScanTenantResourceQuotasAsync(
+        CancellationToken cancellationToken)
+    {
+        var result = await tenantResourceQuotaWarningService.ScanAsync(cancellationToken);
+        var riskCount = result.WarningResourceCount + result.ExhaustedResourceCount;
+        var status = riskCount > 0 ? "Warning" : "Success";
+        var message = riskCount > 0
+            ? $"扫描 {result.ScannedTenantCount} 个租户，预警 {result.WarningResourceCount} 项，耗尽 {result.ExhaustedResourceCount} 项，发送 {result.NotificationCount} 条站内通知"
+            : $"扫描 {result.ScannedTenantCount} 个租户，所有资源配额正常";
+        var details = result.Details.Select(detail => new ScheduledJobExecutionDetail(
+            "TenantResourceQuota",
+            "Tenant",
+            detail.TenantId,
+            $"{detail.TenantName}（{detail.TenantCode}）",
+            detail.ResourceType,
+            null,
+            detail.Status == TenantQuotaStatuses.Exhausted ? "Critical" : "Warning",
+            $"{detail.ResourceName}：{detail.UsedValue}/{detail.LimitValue}（{detail.UsagePercent:0.##}%），接收人 {detail.RecipientCount} 人，本次通知 {detail.NotificationCount} 条"))
+            .ToArray();
+
+        return new ScheduledJobExecutionResult(status, message, details);
     }
 
     private async Task<ScheduledJobExecutionResult> ScanAlertsAsync(CancellationToken cancellationToken)
@@ -96,11 +147,25 @@ public sealed class ScheduledJobExecutor(
     private async Task<ScheduledJobExecutionResult> CleanupAuditLogsAsync(CancellationToken cancellationToken)
     {
         var retentionBoundary = DateTimeOffset.UtcNow.AddDays(-90);
+        var outboxRetentionBoundary = DateTimeOffset.UtcNow.AddDays(-30);
         int deletedCount;
+        int deletedOutboxCount;
+        int deletedInboxCount;
         if (dbContext.Database.IsRelational())
         {
             deletedCount = await dbContext.AuditLogs
                 .Where(log => log.CreatedAt < retentionBoundary)
+                .ExecuteDeleteAsync(cancellationToken);
+            deletedInboxCount = await dbContext.InboxMessages
+                .Where(inbox => dbContext.OutboxMessages.Any(outbox =>
+                    outbox.Id == inbox.MessageId &&
+                    outbox.Status == "Succeeded" &&
+                    outbox.ProcessedAt < outboxRetentionBoundary))
+                .ExecuteDeleteAsync(cancellationToken);
+            deletedOutboxCount = await dbContext.OutboxMessages
+                .Where(message =>
+                    message.Status == "Succeeded" &&
+                    message.ProcessedAt < outboxRetentionBoundary)
                 .ExecuteDeleteAsync(cancellationToken);
         }
         else
@@ -110,10 +175,29 @@ public sealed class ScheduledJobExecutor(
                 .ToArrayAsync(cancellationToken);
             dbContext.AuditLogs.RemoveRange(expiredLogs);
             deletedCount = expiredLogs.Length;
+
+            var expiredInboxMessages = await dbContext.InboxMessages
+                .Where(inbox => dbContext.OutboxMessages.Any(outbox =>
+                    outbox.Id == inbox.MessageId &&
+                    outbox.Status == "Succeeded" &&
+                    outbox.ProcessedAt < outboxRetentionBoundary))
+                .ToArrayAsync(cancellationToken);
+            dbContext.InboxMessages.RemoveRange(expiredInboxMessages);
+            deletedInboxCount = expiredInboxMessages.Length;
+
+            var expiredOutboxMessages = await dbContext.OutboxMessages
+                .Where(message =>
+                    message.Status == "Succeeded" &&
+                    message.ProcessedAt < outboxRetentionBoundary)
+                .ToArrayAsync(cancellationToken);
+            dbContext.OutboxMessages.RemoveRange(expiredOutboxMessages);
+            deletedOutboxCount = expiredOutboxMessages.Length;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        return new ScheduledJobExecutionResult("Success", $"已清理 {deletedCount} 条 90 天前审计日志");
+        return new ScheduledJobExecutionResult(
+            "Success",
+            $"已清理 {deletedCount} 条 90 天前审计日志、{deletedOutboxCount} 条 30 天前已完成 Outbox、{deletedInboxCount} 条 Inbox 回执");
     }
 
     private async Task<ScheduledJobExecutionResult> CheckStorageConsistencyAsync(CancellationToken cancellationToken)

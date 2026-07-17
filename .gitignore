@@ -21,6 +21,9 @@ tmp/
 # Local configuration and secrets
 /.env
 !/.env.example
+/.env.pre-restore.*
+/.env.bak.*
+/backups/
 **/appsettings.Development.json
 **/appsettings.Local.json
 **/appsettings.*.local.json

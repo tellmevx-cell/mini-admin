@@ -26,4 +26,14 @@ public interface ITenantAppService
     Task<TenantDto?> EnableAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<TenantDto?> DisableAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<TenantDto?> RenewAsync(
+        Guid id,
+        RenewTenantRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PageResult<TenantLifecycleRecordDto>> GetLifecycleRecordsAsync(
+        Guid id,
+        TenantLifecycleRecordListQuery query,
+        CancellationToken cancellationToken = default);
 }

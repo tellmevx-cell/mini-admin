@@ -1,11 +1,13 @@
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.Files;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
 
 namespace MiniAdmin.Application.Files;
 
 public sealed class FileAppService(
     IFileRepository fileRepository,
-    IFileStorageService fileStorageService) : IFileAppService
+    IFileStorageService fileStorageService,
+    ITenantResourceQuotaService tenantResourceQuotaService) : IFileAppService
 {
     public Task<PageResult<FileDto>> GetListAsync(
         FileListQuery query,
@@ -26,23 +28,52 @@ public sealed class FileAppService(
             throw new InvalidOperationException("File name is required.");
         }
 
+        if (size < 0)
+        {
+            throw new InvalidOperationException("File size is invalid.");
+        }
+
+        await tenantResourceQuotaService.EnsureCanAddStorageAsync(size, cancellationToken);
+
         var storageResult = await fileStorageService.SaveAsync(
             content,
             originalName,
             string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
             cancellationToken);
 
-        return await fileRepository.CreateAsync(
-            new CreateFileRecordRequest(
-                OriginalName: Path.GetFileName(originalName),
-                StoredName: storageResult.StoredName,
-                ContentType: string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
-                Size: size,
-                StorageProvider: storageResult.StorageProvider,
-                StoragePath: storageResult.StoragePath,
-                Status: "Normal",
-                CreatedAt: DateTimeOffset.UtcNow),
-            cancellationToken);
+        try
+        {
+            return await tenantResourceQuotaService.ExecuteStorageWriteAsync(
+                size,
+                token => fileRepository.CreateAsync(
+                    new CreateFileRecordRequest(
+                        OriginalName: Path.GetFileName(originalName),
+                        StoredName: storageResult.StoredName,
+                        ContentType: string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
+                        Size: size,
+                        StorageProvider: storageResult.StorageProvider,
+                        StoragePath: storageResult.StoragePath,
+                        Status: "Normal",
+                        CreatedAt: DateTimeOffset.UtcNow),
+                    token),
+                cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                await fileStorageService.DeleteAsync(
+                    storageResult.StorageProvider,
+                    storageResult.StoragePath,
+                    CancellationToken.None);
+            }
+            catch
+            {
+                // Preserve the original write error; the consistency job can clean an orphaned object.
+            }
+
+            throw;
+        }
     }
 
     public async Task<FileDownloadResult?> DownloadAsync(

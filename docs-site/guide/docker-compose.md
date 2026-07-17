@@ -40,6 +40,8 @@ bash deploy.sh
 | `mini-admin-server-install.sh` | 单独上传到服务器，从 Gitee 安装或安全更新 `main` 后执行部署 |
 | `deploy.sh` | 服务器一键入口 |
 | `scripts/deploy-mini-admin.sh` | 部署、重试、健康检查和故障诊断实现 |
+| `scripts/backup-mini-admin.sh` | 一致性备份 MySQL、上传卷、配置清单与校验和 |
+| `scripts/restore-mini-admin.sh` | 校验、恢复、清缓存并等待全栈健康 |
 | `scripts/package-server.ps1` | 在 Windows 本机生成安全的服务器上传包 |
 | `docker-compose.yml` | 五个服务、网络、数据卷和健康检查 |
 | `.env.example` | 环境变量模板，不包含真实密钥 |
@@ -229,6 +231,9 @@ docker compose down
 
 # 再次部署
 bash deploy.sh
+
+# 生产备份（包含上传卷时会短暂停止并自动恢复 API）
+bash scripts/backup-mini-admin.sh
 ```
 
 数据保存在三个具名卷中：
@@ -240,6 +245,8 @@ bash deploy.sh
 | `miniadmin_uploads` | 本地文件存储 |
 
 `docker compose down` 不会删除这些数据。`docker compose down -v` 会永久删除数据库、Redis 和上传文件，只能在确认不需要任何旧数据的全新测试环境中使用。
+
+备份、恢复、定时策略和故障处置的完整步骤见[生产可靠性运行手册](../runbooks/production-reliability.md)。备份保存在同一台服务器上不算完整灾备，必须额外同步到异机或对象存储。
 
 ## 常见故障
 
@@ -297,5 +304,5 @@ ss -lntp | grep -E ':5666|:8080|:8088'
 - `.env` 权限应为 `600`，不要上传到 Git 或发送给他人。
 - 生产环境通过 1Panel/Nginx 启用 HTTPS，只公开 80/443。
 - HTTPS 部署必须关闭 `MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP`，并确认 OIDC 发现文档中的 issuer 是公网域名。
-- 定期备份 `miniadmin_mysql` 和 `miniadmin_uploads`。
+- 定期执行 `scripts/backup-mini-admin.sh`，异地保存并完成恢复演练。
 - 更新前先备份数据库，更新后检查 `docker compose ps` 和 API 日志。

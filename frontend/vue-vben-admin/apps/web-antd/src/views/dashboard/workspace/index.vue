@@ -6,9 +6,10 @@ import type {
   WorkbenchTrendItem,
 } from '@vben/common-ui';
 
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useAccess } from '@vben/access';
 import {
   AnalysisChartCard,
   WorkbenchHeader,
@@ -21,9 +22,32 @@ import { preferences } from '@vben/preferences';
 import { useUserStore } from '@vben/stores';
 import { openWindow } from '@vben/utils';
 
+import { Button, Progress, Skeleton, Tag } from 'ant-design-vue';
+
+import {
+  getCurrentTenantResourceUsageApi,
+  type TenantQuotaStatus,
+  type TenantResourceMetric,
+  type TenantResourceUsage,
+} from '#/api/tenant/resource-usage';
+
 import AnalyticsVisitsSource from '../analytics/analytics-visits-source.vue';
 
 const userStore = useUserStore();
+const { hasAccessByCodes } = useAccess();
+const quotaLoading = ref(true);
+const resourceUsage = ref<null | TenantResourceUsage>(null);
+const quotaMetrics = computed(() =>
+  resourceUsage.value
+    ? [resourceUsage.value.users, resourceUsage.value.storage]
+    : [],
+);
+const canManageUsers = computed(() =>
+  hasAccessByCodes(['system:user:query']),
+);
+const canManageFiles = computed(() =>
+  hasAccessByCodes(['system:file:query']),
+);
 
 // 这是一个示例数据，实际项目中需要根据实际情况进行调整
 // url 也可以是内部路由，在 navTo 方法中识别处理，进行内部跳转
@@ -231,6 +255,78 @@ function navTo(nav: WorkbenchProjectItem | WorkbenchQuickNavItem) {
     console.warn(`Unknown URL for navigation item: ${nav.title} -> ${nav.url}`);
   }
 }
+
+async function loadResourceUsage() {
+  quotaLoading.value = true;
+  try {
+    resourceUsage.value = await getCurrentTenantResourceUsageApi();
+  } finally {
+    quotaLoading.value = false;
+  }
+}
+
+function quotaLabel(status: TenantQuotaStatus) {
+  return {
+    Exhausted: '配额已耗尽',
+    Normal: '用量正常',
+    Unlimited: '无限制',
+    Warning: '接近上限',
+  }[status];
+}
+
+function quotaColor(status: TenantQuotaStatus) {
+  return {
+    Exhausted: '#ef4444',
+    Normal: '#16a34a',
+    Unlimited: '#2563eb',
+    Warning: '#d97706',
+  }[status];
+}
+
+function quotaTagColor(status: TenantQuotaStatus) {
+  return {
+    Exhausted: 'red',
+    Normal: 'green',
+    Unlimited: 'blue',
+    Warning: 'gold',
+  }[status];
+}
+
+function progressPercent(metric: TenantResourceMetric) {
+  return metric.limitValue > 0
+    ? Math.min(Math.round(metric.usagePercent), 100)
+    : 100;
+}
+
+function formatResourceValue(metric: TenantResourceMetric, value: number) {
+  if (metric.resourceType === 'Users') {
+    return `${value} 个`;
+  }
+
+  if (value >= 1024 * 1024 * 1024) {
+    return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatCheckedAt(value: string) {
+  return new Date(value).toLocaleString();
+}
+
+function canManage(metric: TenantResourceMetric) {
+  return metric.resourceType === 'Users'
+    ? canManageUsers.value
+    : canManageFiles.value;
+}
+
+function openResourceManagement(metric: TenantResourceMetric) {
+  void router.push(metric.managementPath);
+}
+
+onMounted(() => {
+  void loadResourceUsage();
+});
 </script>
 
 <template>
@@ -243,6 +339,81 @@ function navTo(nav: WorkbenchProjectItem | WorkbenchQuickNavItem) {
       </template>
       <template #description> 今日晴，20℃ - 32℃！ </template>
     </WorkbenchHeader>
+
+    <section
+      v-if="quotaLoading || resourceUsage"
+      class="quota-overview mt-5"
+    >
+      <Skeleton v-if="quotaLoading" active :paragraph="{ rows: 3 }" />
+      <template v-else-if="resourceUsage">
+        <header class="quota-overview__header">
+          <div>
+            <div class="quota-overview__eyebrow">租户资源用量</div>
+            <h2>{{ resourceUsage.tenantName }}</h2>
+            <p>
+              当前套餐：{{ resourceUsage.packageName || '未分配套餐' }} ·
+              更新时间：{{ formatCheckedAt(resourceUsage.checkedAt) }}
+            </p>
+          </div>
+          <div class="quota-overview__summary">
+            <span>整体状态</span>
+            <Tag :color="quotaTagColor(resourceUsage.overallStatus)">
+              {{ quotaLabel(resourceUsage.overallStatus) }}
+            </Tag>
+          </div>
+        </header>
+
+        <div class="quota-grid">
+          <article
+            v-for="metric in quotaMetrics"
+            :key="metric.resourceType"
+            class="quota-card"
+            :class="`quota-card--${metric.status.toLowerCase()}`"
+          >
+            <div class="quota-card__topline">
+              <div>
+                <span class="quota-card__name">{{ metric.displayName }}</span>
+                <strong>
+                  {{ formatResourceValue(metric, metric.usedValue) }}
+                </strong>
+              </div>
+              <Tag :color="quotaTagColor(metric.status)">
+                {{ quotaLabel(metric.status) }}
+              </Tag>
+            </div>
+            <Progress
+              :percent="progressPercent(metric)"
+              :show-info="false"
+              :stroke-color="quotaColor(metric.status)"
+              :trail-color="'rgba(148, 163, 184, 0.18)'"
+            />
+            <div class="quota-card__footer">
+              <div>
+                <span>配额上限</span>
+                <b>
+                  {{
+                    metric.limitValue > 0
+                      ? formatResourceValue(metric, metric.limitValue)
+                      : '无限制'
+                  }}
+                </b>
+              </div>
+              <div v-if="metric.limitValue > 0">
+                <span>使用比例</span>
+                <b>{{ metric.usagePercent.toFixed(2) }}%</b>
+              </div>
+              <Button
+                v-if="canManage(metric)"
+                size="small"
+                @click="openResourceManagement(metric)"
+              >
+                去管理
+              </Button>
+            </div>
+          </article>
+        </div>
+      </template>
+    </section>
 
     <div class="mt-5 flex flex-col lg:flex-row">
       <div class="mr-4 w-full lg:w-3/5">
@@ -264,3 +435,139 @@ function navTo(nav: WorkbenchProjectItem | WorkbenchQuickNavItem) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.quota-overview {
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% -20%, rgb(37 99 235 / 16%), transparent 34%),
+    linear-gradient(135deg, hsl(var(--card)), hsl(var(--card)) 72%, rgb(15 118 110 / 5%));
+  box-shadow: 0 12px 36px rgb(15 23 42 / 6%);
+}
+
+.quota-overview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 18px;
+}
+
+.quota-overview__eyebrow {
+  margin-bottom: 5px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.quota-overview h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 720;
+}
+
+.quota-overview p {
+  margin: 5px 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+}
+
+.quota-overview__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: hsl(var(--background) / 70%);
+  font-size: 12px;
+}
+
+.quota-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.quota-card {
+  padding: 17px 18px;
+  border: 1px solid hsl(var(--border));
+  border-left: 4px solid #16a34a;
+  border-radius: 11px;
+  background: hsl(var(--background) / 78%);
+}
+
+.quota-card--warning {
+  border-left-color: #d97706;
+}
+
+.quota-card--exhausted {
+  border-left-color: #ef4444;
+}
+
+.quota-card--unlimited {
+  border-left-color: #2563eb;
+}
+
+.quota-card__topline,
+.quota-card__footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quota-card__topline {
+  margin-bottom: 13px;
+}
+
+.quota-card__topline > div {
+  display: grid;
+  gap: 3px;
+}
+
+.quota-card__name,
+.quota-card__footer span {
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.quota-card__topline strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-card__footer {
+  align-items: flex-end;
+  margin-top: 9px;
+}
+
+.quota-card__footer > div {
+  display: grid;
+  gap: 1px;
+}
+
+.quota-card__footer b {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .quota-overview {
+    padding: 16px;
+  }
+
+  .quota-overview__header {
+    flex-direction: column;
+  }
+
+  .quota-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

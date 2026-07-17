@@ -57,7 +57,7 @@ MiniAdmin 采用前后端分离架构，后端按 `Platform / Domain / Applicati
 - **SaaS 多租户**：支持平台租户、租户套餐、租户初始化模板、租户管理员开通和租户数据隔离。
 - **代码生成器**：从表结构生成分层 CRUD、Dynamic API、PageRegistry 和前端页面，并支持产物治理、回滚和工作流绑定。
 - **开放与实时**：内置 OAuth2/OIDC、个人 OpenAPI 凭证、Scriban 多通道模板、SignalR 通知和在线聊天。
-- **工程化完整**：包含测试、文档站、运行管理、定时任务、事件总线、工作单元和本地/生产配置说明。
+- **工程化完整**：包含测试、文档站、运行管理、分布式任务租约、事务 Outbox/Inbox、工作单元和生产配置门禁。
 - **网关可演进**：内置 YARP 灰度、TraceId、限流和熔断，为渐进发布与后续微服务拆分预留边界。
 
 ## 技术栈
@@ -132,6 +132,8 @@ mini-admin/
 
 - 平台租户管理、租户启停、到期控制和登录租户选项。
 - 租户套餐与菜单授权。
+- 用户数与文件存储配额闭环，支持工作台用量看板、80%/100% 分级预警、SignalR 实时通知、并发防穿透、超限拦截和删除后释放额度。
+- 租户生命周期闭环，支持 30/7/1 天到期提醒、自动过期、会话失效、一键续期和操作历史。
 - 租户管理员自动开通。
 - 标准企业模板初始化部门、岗位、角色和基础权限。
 - 租户内角色、部门、岗位编码唯一，避免多租户基础数据冲突。
@@ -146,9 +148,10 @@ mini-admin/
 ### 运维与平台能力
 
 - 文件上传、下载、异常文件标记，以及 Local/S3/OSS/COS/MinIO 多存储。
-- 定时任务、任务日志、系统监控看板和告警中心。
+- 定时任务、数据库租约与心跳、任务日志、系统监控看板和告警中心。
 - 项目运行管理，可在管理端查看服务、日志、构建和产物。
-- 本地事件总线和工作单元，便于扩展领域事件和事务边界。
+- 本地事件总线、工作单元和事务 Outbox/Inbox，关键事件支持退避重试、死信和租户上下文恢复。
+- 存活/就绪探针、迁移初始化互斥、生产弱配置阻断，以及 MySQL/上传卷校验备份与恢复。
 - MiniAdmin.Gateway 支持灰度发布、TraceId、限流、熔断和 OIDC 协议代理。
 - OAuth2/OIDC 第三方应用、用户授权同意和个人 AppKey/AppSecret 签名调用。
 
@@ -215,7 +218,8 @@ dotnet run --project src/MiniAdmin.Api/MiniAdmin.Api.csproj --urls http://localh
 健康检查：
 
 ```powershell
-Invoke-WebRequest -Uri http://localhost:5021/health -UseBasicParsing
+Invoke-WebRequest -Uri http://localhost:5021/health/live -UseBasicParsing
+Invoke-WebRequest -Uri http://localhost:5021/health/ready -UseBasicParsing
 ```
 
 ### 启动前端
@@ -258,9 +262,26 @@ chmod +x mini-admin-server-install.sh
 bash mini-admin-server-install.sh
 ```
 
+如果服务器目录来自旧压缩包、执行过 `git init` 或残留未跟踪源码，请先下载最新安装器并执行安全修复；它会保留 `.env`、Docker 数据卷和旧源码备份：
+
+```bash
+curl -fsSL https://gitee.com/baijincom/mini-admin/raw/main/mini-admin-server-install.sh \
+  -o /root/mini-admin-server-install.sh
+bash /root/mini-admin-server-install.sh --repair
+```
+
 它会默认从 Gitee `main` 分支安装到 `/opt/mini-admin`，后续再次执行即可安全更新。域名和 1Panel 配置见[单脚本服务器安装](docs-site/guide/server-install-script.md)。
 
 脚本会自动生成生产 `.env`、按顺序构建并启动 MySQL、Redis、API、Gateway、Web，等待数据库初始化完成，并验证整条 `/api` 代理链路。失败时会直接显示对应容器日志。
+
+部署完成后执行生产验收：
+
+```bash
+bash scripts/acceptance-mini-admin.sh \
+  --web-url https://admin.example.com
+```
+
+该命令默认只读；需要真实账号冒烟或生成一致性备份时，分别显式增加 `--with-login`、`--with-backup`。完整说明见[生产可靠性运行手册](docs-site/runbooks/production-reliability.md)。
 
 国内服务器无法访问 GitHub 时，先在本机生成只包含 Git 已提交文件的部署包：
 
@@ -386,6 +407,7 @@ pnpm -F @vben/web-antd run typecheck
 
 - 不提交 `appsettings.Development.json`、`.env.local`、日志、构建产物和本地上传文件。
 - 不提交真实数据库、Redis、MinIO、SMTP、Webhook、JWT 生产密钥。
+- 不提交 `backups/`、`.env.bak.*` 或 `.env.pre-restore.*`，这些文件包含生产密钥。
 - 生产环境必须替换默认账号密码、JWT 密钥和对象存储配置。
 - 如果你修改了 Vben Admin 子项目，请同时遵守其目录内的 [LICENSE](frontend/vue-vben-admin/LICENSE)。
 

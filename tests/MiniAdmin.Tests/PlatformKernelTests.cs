@@ -75,6 +75,20 @@ public sealed class PlatformKernelTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/health/live", "self")]
+    [InlineData("/health/ready", "database")]
+    [InlineData("/health/ready", "primary-cache")]
+    public async Task HealthEndpoints_Report_Real_Registered_Checks(string path, string expectedCheck)
+    {
+        var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Healthy", document.RootElement.GetProperty("status").GetString());
+        Assert.True(document.RootElement.GetProperty("checks").TryGetProperty(expectedCheck, out _));
+    }
+
     [Fact]
     public async Task PageRegistry_Synchronizes_Menu_Permission_And_Admin_Grant()
     {

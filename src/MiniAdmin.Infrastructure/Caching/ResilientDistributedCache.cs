@@ -1,12 +1,13 @@
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using MiniAdmin.Application.Contracts.Caching;
 
 namespace MiniAdmin.Infrastructure.Caching;
 
 public sealed class ResilientDistributedCache(
     IDistributedCache primary,
     IDistributedCache fallback,
-    ILogger<ResilientDistributedCache> logger) : IDistributedCache
+    ILogger<ResilientDistributedCache> logger) : IDistributedCache, IPrimaryCacheHealthProbe
 {
     private static readonly TimeSpan PrimaryFailureBackoff = TimeSpan.FromSeconds(30);
     private DateTimeOffset _primaryUnavailableUntil;
@@ -160,6 +161,39 @@ public sealed class ResilientDistributedCache(
         }
 
         await fallback.SetAsync(key, value, options, token);
+    }
+
+    public async Task ProbeAsync(CancellationToken cancellationToken = default)
+    {
+        var key = $"mini-admin:health:{Guid.NewGuid():N}";
+        var expected = Guid.NewGuid().ToByteArray();
+        try
+        {
+            await primary.SetAsync(
+                key,
+                expected,
+                new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30)
+                },
+                cancellationToken);
+            var actual = await primary.GetAsync(key, cancellationToken);
+            if (actual is null || !actual.AsSpan().SequenceEqual(expected))
+            {
+                throw new InvalidOperationException("Primary distributed cache read/write probe did not round-trip.");
+            }
+        }
+        finally
+        {
+            try
+            {
+                await primary.RemoveAsync(key, cancellationToken);
+            }
+            catch
+            {
+                // Preserve the original probe failure; the key has a short expiration.
+            }
+        }
     }
 
     private bool IsPrimaryUnavailable()

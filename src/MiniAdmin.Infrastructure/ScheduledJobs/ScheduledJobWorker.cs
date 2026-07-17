@@ -7,6 +7,7 @@ namespace MiniAdmin.Infrastructure.ScheduledJobs;
 
 public sealed class ScheduledJobWorker(
     IServiceScopeFactory serviceScopeFactory,
+    IScheduledJobExecutionContext executionContext,
     ILogger<ScheduledJobWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -17,7 +18,10 @@ public sealed class ScheduledJobWorker(
             {
                 using var scope = serviceScopeFactory.CreateScope();
                 var appService = scope.ServiceProvider.GetRequiredService<IScheduledJobAppService>();
-                await appService.RunDueJobsAsync(DateTimeOffset.UtcNow, 5, stoppingToken);
+                await appService.RunDueJobsAsync(
+                    DateTimeOffset.UtcNow,
+                    executionContext.BatchSize,
+                    stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -28,7 +32,14 @@ public sealed class ScheduledJobWorker(
                 logger.LogError(exception, "Scheduled job worker failed.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            try
+            {
+                await Task.Delay(executionContext.PollInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
         }
     }
 }

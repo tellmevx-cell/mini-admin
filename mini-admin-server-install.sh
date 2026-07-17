@@ -6,6 +6,9 @@ REPOSITORY_URL="${MINIADMIN_REPO_URL:-https://gitee.com/baijincom/mini-admin.git
 BRANCH="${MINIADMIN_BRANCH:-main}"
 INSTALL_DIR="${MINIADMIN_INSTALL_DIR:-/opt/mini-admin}"
 DEPLOY_ARGS=()
+REPAIR_INSTALL=false
+STAGING_DIR=""
+SOURCE_BACKUP_DIR=""
 
 usage() {
   cat <<'EOF'
@@ -23,6 +26,7 @@ MiniAdmin 服务器安装/更新引导脚本
   --repo URL         代码仓库，默认 https://gitee.com/baijincom/mini-admin.git
   --branch NAME      部署分支，默认 main
   --dir PATH         安装目录，默认 /opt/mini-admin
+  --repair           用全新克隆替换脏目录，保留 .env、数据卷和旧源码备份
 
 可直接透传给 deploy.sh 的选项：
   --force-env        重新生成 .env，仅适用于没有旧 MySQL 数据的环境
@@ -41,6 +45,7 @@ MiniAdmin 服务器安装/更新引导脚本
 示例：
   MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/ bash mini-admin-server-install.sh
   bash mini-admin-server-install.sh --no-cache
+  bash mini-admin-server-install.sh --repair
 EOF
 }
 
@@ -79,6 +84,10 @@ parse_args() {
         INSTALL_DIR="$2"
         shift 2
         ;;
+      --repair)
+        REPAIR_INSTALL=true
+        shift
+        ;;
       --force-env|--skip-build|--no-cache|--logs)
         DEPLOY_ARGS+=("$1")
         shift
@@ -92,6 +101,77 @@ parse_args() {
         ;;
     esac
   done
+}
+
+cleanup_staging() {
+  if [[ -n "$STAGING_DIR" && -d "$STAGING_DIR" && "$STAGING_DIR" == "${INSTALL_DIR}.incoming-"* ]]; then
+    rm -rf -- "$STAGING_DIR"
+  fi
+}
+
+verify_repository() {
+  local repository_dir="$1"
+  local required_path
+
+  for required_path in \
+    deploy.sh \
+    docker-compose.yml \
+    Dockerfile.api \
+    scripts/deploy-mini-admin.sh \
+    scripts/acceptance-mini-admin.sh; do
+    [[ -f "${repository_dir}/${required_path}" ]] || fail "新代码缺少 ${required_path}，已停止替换现有目录。"
+  done
+
+  if find "${repository_dir}/src/MiniAdmin.Api/Generated" -maxdepth 1 -type f \
+      \( -name 'CustomerEndpoints.cs' -o -name 'EfMigrationsHistoryEndpoints.cs' -o -name 'SampleOrderEndpoints.cs' \) \
+      -print -quit 2>/dev/null | grep -q .; then
+    fail "新代码仍包含已废弃的 Generated 接口文件，已停止替换现有目录。"
+  fi
+}
+
+repair_repository() {
+  local parent_dir timestamp
+  parent_dir="$(dirname "$INSTALL_DIR")"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  STAGING_DIR="${INSTALL_DIR}.incoming-${timestamp}-$$"
+  SOURCE_BACKUP_DIR="${INSTALL_DIR}.source-backup-${timestamp}"
+
+  mkdir -p "$parent_dir" 2>/dev/null || fail "无法创建 ${parent_dir}，请使用 root 或有权限的账号执行。"
+  [[ ! -e "$STAGING_DIR" ]] || fail "临时目录已存在：${STAGING_DIR}"
+  [[ ! -e "$SOURCE_BACKUP_DIR" ]] || fail "备份目录已存在：${SOURCE_BACKUP_DIR}"
+
+  log "修复模式：全新克隆 ${REPOSITORY_URL} ${BRANCH}。"
+  git clone --branch "$BRANCH" --single-branch "$REPOSITORY_URL" "$STAGING_DIR"
+  verify_repository "$STAGING_DIR"
+
+  if [[ -f "$INSTALL_DIR/.env" ]]; then
+    cp -p "$INSTALL_DIR/.env" "$STAGING_DIR/.env"
+    chmod 600 "$STAGING_DIR/.env"
+    log "已将现有 .env 安全带入新代码目录。"
+  else
+    warn "现有目录没有 .env，部署器将生成新的生产密钥。若数据库已有数据，请先确认原 .env 未存放在其他位置。"
+  fi
+
+  cd "$parent_dir"
+  if [[ -e "$INSTALL_DIR" ]]; then
+    mv -- "$INSTALL_DIR" "$SOURCE_BACKUP_DIR"
+    log "旧源码已保留在 ${SOURCE_BACKUP_DIR}。"
+  fi
+
+  if ! mv -- "$STAGING_DIR" "$INSTALL_DIR"; then
+    if [[ -d "$SOURCE_BACKUP_DIR" && ! -e "$INSTALL_DIR" ]]; then
+      mv -- "$SOURCE_BACKUP_DIR" "$INSTALL_DIR" || true
+    fi
+    fail "新代码目录切换失败；已尝试恢复旧源码目录。"
+  fi
+  STAGING_DIR=""
+
+  if [[ -d "$SOURCE_BACKUP_DIR/backups" && ! -e "$INSTALL_DIR/backups" ]]; then
+    mv -- "$SOURCE_BACKUP_DIR/backups" "$INSTALL_DIR/backups"
+    log "已保留原目录中的本地备份文件。"
+  fi
+
+  log "干净源码已切换到 ${INSTALL_DIR}；Docker 数据卷未删除。"
 }
 
 validate_environment() {
@@ -109,9 +189,14 @@ validate_environment() {
 }
 
 prepare_repository() {
-  local parent_dir current_branch tracked_changes
+  local parent_dir current_branch working_tree_changes
   parent_dir="$(dirname "$INSTALL_DIR")"
   mkdir -p "$parent_dir" 2>/dev/null || fail "无法创建 ${parent_dir}，请使用 root 或有权限的账号执行。"
+
+  if [[ "$REPAIR_INSTALL" == "true" ]]; then
+    repair_repository
+    return
+  fi
 
   if [[ ! -e "$INSTALL_DIR" ]]; then
     log "从 ${REPOSITORY_URL} 克隆 ${BRANCH} 到 ${INSTALL_DIR}。"
@@ -119,10 +204,13 @@ prepare_repository() {
     return
   fi
 
-  [[ -d "$INSTALL_DIR/.git" ]] || fail "${INSTALL_DIR} 已存在但不是 Git 仓库。请改用 --dir 指定空目录，或进入现有目录直接执行 bash deploy.sh。"
+  [[ -d "$INSTALL_DIR/.git" ]] || fail "${INSTALL_DIR} 已存在但不是 Git 仓库。若来自旧压缩包，请重新执行并增加 --repair。"
+  git -C "$INSTALL_DIR" rev-parse --verify HEAD >/dev/null 2>&1 || \
+    fail "${INSTALL_DIR} 是没有提交记录的空 Git 仓库。请重新执行并增加 --repair，安装器会保留 .env 和旧源码备份。"
 
-  tracked_changes="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no)"
-  [[ -z "$tracked_changes" ]] || fail "服务器仓库存在未提交修改，为避免覆盖已停止更新：${INSTALL_DIR}"
+  working_tree_changes="$(git -C "$INSTALL_DIR" status --porcelain)"
+  [[ -z "$working_tree_changes" ]] || \
+    fail "服务器仓库存在修改或未跟踪文件，为避免旧文件进入 Docker 构建已停止更新。确认无需保留后，请重新执行并增加 --repair。"
 
   log "更新服务器仓库到 ${REPOSITORY_URL} ${BRANCH}。"
   if git -C "$INSTALL_DIR" remote get-url origin >/dev/null 2>&1; then
@@ -149,9 +237,18 @@ run_deployment() {
   [[ -f "$INSTALL_DIR/deploy.sh" ]] || fail "仓库缺少 deploy.sh，请确认部署的是 MiniAdmin main 分支。"
   log "代码准备完成，开始 Docker Compose 部署。"
   cd "$INSTALL_DIR"
-  exec bash deploy.sh "${DEPLOY_ARGS[@]}"
+  bash deploy.sh "${DEPLOY_ARGS[@]}"
+
+  if [[ " ${DEPLOY_ARGS[*]} " == *" --logs "* ]]; then
+    return
+  fi
+
+  log "部署器执行完成，开始只读验收。"
+  bash scripts/acceptance-mini-admin.sh
+  log "安装、部署与验收全部通过。"
 }
 
+trap cleanup_staging EXIT
 parse_args "$@"
 validate_environment
 prepare_repository

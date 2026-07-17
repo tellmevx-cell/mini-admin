@@ -71,14 +71,6 @@ public static class CoreEndpointExtensions
 {
     public static IEndpointRouteBuilder MapCoreEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/health", () => Results.Ok(new
-        {
-            Application = "MiniAdmin.Api",
-            Status = "Healthy",
-            Timestamp = DateTimeOffset.UtcNow
-        }))
-        .WithName("HealthCheck");
-
         app.MapGet("/public/app-branding", async (
             IAppBrandingAppService appBrandingAppService,
             CancellationToken cancellationToken) =>

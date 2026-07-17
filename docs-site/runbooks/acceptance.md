@@ -11,7 +11,8 @@ docs/runbooks/workflow-message-center-acceptance-checklist.md
 ## 环境检查
 
 - 后端 API 可启动。
-- `/health` 返回成功。
+- `/health/live` 返回成功且包含 `self` 检查。
+- `/health/ready` 返回成功且包含 `database`、`primary-cache` 检查。
 - 前端可打开。
 - 管理员可登录。
 - 文档站可构建。
@@ -79,8 +80,34 @@ docs/runbooks/workflow-message-center-acceptance-checklist.md
 - Local、S3、OSS、COS、MinIO 配置可解析，未启用的提供方不影响启动。
 - 系统监控可显示 CPU、内存、磁盘、网络、运行时，并对不可用硬件信息安全降级。
 - 中文和英文菜单标题可按请求语言解析。
+- 两个 worker 不能同时抢到同一个定时任务，租约过期后可接管。
+- Outbox 失败会退避重试，超过上限进入 DeadLetter，手工重投有效。
+- 生产弱密钥、InMemory 数据库或 Memory Cache 会阻止 API 启动。
+- 备份目录包含数据库、上传卷、清单和通过校验的 `SHA256SUMS`。
+- 在隔离环境至少完成一次 `restore-mini-admin.sh` 恢复演练。
 
 ## 自动化命令
+
+生产 Docker Compose 只读验收：
+
+```bash
+cd /opt/mini-admin
+bash scripts/acceptance-mini-admin.sh \
+  --web-url https://admin.example.com
+```
+
+增加账号和备份闭环：
+
+```bash
+MINIADMIN_ACCEPTANCE_USERNAME=acceptance-admin \
+MINIADMIN_ACCEPTANCE_PASSWORD='使用专用强密码' \
+  bash scripts/acceptance-mini-admin.sh \
+    --web-url https://admin.example.com \
+    --with-login \
+    --with-backup
+```
+
+该命令不包含恢复。恢复只能在隔离环境执行，不能把生产数据库当作演练目标。
 
 后端完整测试：
 
@@ -117,6 +144,8 @@ pnpm docs:build
 - 前端类型检查通过。
 - 文档站构建通过。
 - Docker Compose 在目标 Linux 主机通过 `bash deploy.sh` 的完整健康检查。
+- `acceptance-mini-admin.sh` 的只读检查与专用账号冒烟通过。
+- 生产备份已同步到服务器之外，恢复演练记录可追踪。
 - 没有高风险权限或数据隔离问题。
 
 不建议放行：

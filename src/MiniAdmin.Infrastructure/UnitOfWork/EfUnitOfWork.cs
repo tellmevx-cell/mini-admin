@@ -1,13 +1,21 @@
+using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using MiniAdmin.Application.Contracts.Events;
+using MiniAdmin.Application.Contracts.MultiTenancy;
 using MiniAdmin.Application.Contracts.UnitOfWork;
+using MiniAdmin.Domain.Entities;
+using MiniAdmin.Infrastructure.Events;
 using MiniAdmin.Infrastructure.Persistence;
 
 namespace MiniAdmin.Infrastructure.UnitOfWork;
 
 public sealed class EfUnitOfWork(
     MiniAdminDbContext dbContext,
-    ILocalEventBus localEventBus) : IUnitOfWork, IDisposable, IAsyncDisposable
+    ILocalEventBus localEventBus,
+    IOutboxEventSerializer? outboxEventSerializer = null,
+    IOutboxExecutionContext? outboxExecutionContext = null,
+    ICurrentTenant? currentTenant = null) : IUnitOfWork, IDisposable, IAsyncDisposable
 {
     private readonly List<ILocalEvent> postCommitEvents = [];
     private IDbContextTransaction? currentTransaction;
@@ -73,12 +81,41 @@ public sealed class EfUnitOfWork(
         }
 
         noOpTransactionActive = false;
+        DetachRolledBackOutboxMessages();
     }
 
     public void AddPostCommitEvent(ILocalEvent @event)
     {
         ArgumentNullException.ThrowIfNull(@event);
         postCommitEvents.Add(@event);
+    }
+
+    public void AddOutboxEvent(IOutboxEvent @event)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+        if (outboxEventSerializer is null || outboxExecutionContext is null)
+        {
+            throw new InvalidOperationException(
+                "Outbox services are not registered. Add MiniAdmin persistence before using reliable events.");
+        }
+
+        var serialized = outboxEventSerializer.Serialize(@event);
+        var now = DateTimeOffset.UtcNow;
+        dbContext.OutboxMessages.Add(new OutboxMessage
+        {
+            Id = @event.EventId,
+            EventType = serialized.EventType,
+            Payload = serialized.Payload,
+            Status = OutboxMessageStatuses.Pending,
+            AttemptCount = 0,
+            MaxAttempts = outboxExecutionContext.DefaultMaxAttempts,
+            OccurredAt = @event.OccurredAt,
+            NextAttemptAt = now,
+            TenantId = currentTenant?.TenantId,
+            CorrelationId = Activity.Current?.TraceId.ToString(),
+            CreatedAt = now,
+            UpdatedAt = now
+        });
     }
 
     public async ValueTask DisposeAsync()
@@ -124,6 +161,14 @@ public sealed class EfUnitOfWork(
         {
             cancellationToken.ThrowIfCancellationRequested();
             await localEventBus.PublishAsync(@event, cancellationToken);
+        }
+    }
+
+    private void DetachRolledBackOutboxMessages()
+    {
+        foreach (var entry in dbContext.ChangeTracker.Entries<OutboxMessage>().ToArray())
+        {
+            entry.State = EntityState.Detached;
         }
     }
 }

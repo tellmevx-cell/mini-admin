@@ -40,6 +40,6 @@ EXPOSE 8080
 COPY --from=publish /app/publish .
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=6 \
-    CMD curl --fail http://localhost:8080/health || exit 1
+    CMD curl --fail http://localhost:8080/health/live || exit 1
 
 ENTRYPOINT ["dotnet", "MiniAdmin.Api.dll"]

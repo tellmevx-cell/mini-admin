@@ -93,6 +93,25 @@ public sealed record ScheduledJobRunResultDto(
     string Message,
     long ElapsedMilliseconds);
 
+public sealed record ScheduledJobLease(
+    ScheduledJobDto Job,
+    Guid LeaseToken,
+    string LeaseOwner,
+    DateTimeOffset LeaseExpiresAt);
+
+public interface IScheduledJobExecutionContext
+{
+    string WorkerId { get; }
+
+    TimeSpan LeaseDuration { get; }
+
+    TimeSpan HeartbeatInterval { get; }
+
+    TimeSpan PollInterval { get; }
+
+    int BatchSize { get; }
+}
+
 public interface IScheduledJobRepository
 {
     Task<PageResult<ScheduledJobDto>> GetListAsync(
@@ -118,13 +137,36 @@ public interface IScheduledJobRepository
         SaveScheduledJobRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<ScheduledJobDto>> GetDueJobsAsync(
+    Task<IReadOnlyList<ScheduledJobLease>> AcquireDueJobsAsync(
         DateTimeOffset now,
         int limit,
+        string leaseOwner,
+        TimeSpan leaseDuration,
         CancellationToken cancellationToken = default);
 
-    Task RecordExecutionAsync(
+    Task<ScheduledJobLease?> TryAcquireAsync(
+        Guid id,
+        DateTimeOffset now,
+        string leaseOwner,
+        TimeSpan leaseDuration,
+        bool requireDue,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> RenewLeaseAsync(
         Guid jobId,
+        Guid leaseToken,
+        DateTimeOffset now,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> ReleaseLeaseAsync(
+        Guid jobId,
+        Guid leaseToken,
+        CancellationToken cancellationToken = default);
+
+    Task<bool> RecordExecutionAsync(
+        Guid jobId,
+        Guid leaseToken,
         ScheduledJobExecutionRecord record,
         CancellationToken cancellationToken = default);
 }

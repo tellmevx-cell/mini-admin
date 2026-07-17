@@ -80,6 +80,7 @@ export default defineConfig({
         {
           text: '运行手册',
           items: [
+            { text: '生产可靠性', link: '/runbooks/production-reliability' },
             { text: '工作流与消息中心', link: '/runbooks/workflow-message-center' },
             { text: '验收清单', link: '/runbooks/acceptance' },
           ],

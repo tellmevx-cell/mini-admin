@@ -323,8 +323,12 @@ onMounted(loadPackages);
           <template #bodyCell="{ column, record }">
             <template v-if="column.dataIndex === 'quota'">
               <Space>
-                <Tag color="blue">{{ record.maxUsers }} 用户</Tag>
-                <Tag color="cyan">{{ record.maxStorageMb }} MB</Tag>
+                <Tag color="blue">
+                  {{ record.maxUsers === 0 ? '用户不限' : `${record.maxUsers} 用户` }}
+                </Tag>
+                <Tag color="cyan">
+                  {{ record.maxStorageMb === 0 ? '存储不限' : `${record.maxStorageMb} MB` }}
+                </Tag>
               </Space>
             </template>
             <template v-if="column.dataIndex === 'menuCount'">
@@ -394,14 +398,14 @@ onMounted(loadPackages);
           <Input v-model:value="formState.name" placeholder="例如 企业版" />
         </FormItem>
         <div class="grid grid-cols-2 gap-4">
-          <FormItem label="最大用户数">
+          <FormItem extra="填写 0 表示不限制用户数量" label="最大用户数">
             <InputNumber
               v-model:value="formState.maxUsers"
               class="w-full"
               :min="0"
             />
           </FormItem>
-          <FormItem label="存储容量(MB)">
+          <FormItem extra="填写 0 表示不限制存储容量" label="存储容量(MB)">
             <InputNumber
               v-model:value="formState.maxStorageMb"
               class="w-full"

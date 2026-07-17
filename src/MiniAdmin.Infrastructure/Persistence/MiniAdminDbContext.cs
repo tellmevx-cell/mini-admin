@@ -26,7 +26,11 @@ public sealed class MiniAdminDbContext(
         typeof(ChatConversation),
         typeof(ChatMessage),
         typeof(NotificationDelivery),
-        typeof(NotificationSubscription)
+        typeof(NotificationSubscription),
+        typeof(TenantResourceQuotaWarning),
+        typeof(TenantLifecycleRecord),
+        typeof(OutboxMessage),
+        typeof(InboxMessage)
     ];
 
     private static readonly HashSet<string> SensitivePropertyNames = new(StringComparer.OrdinalIgnoreCase)
@@ -47,6 +51,11 @@ public sealed class MiniAdminDbContext(
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
     public DbSet<TenantPackage> TenantPackages => Set<TenantPackage>();
+
+    public DbSet<TenantResourceQuotaWarning> TenantResourceQuotaWarnings =>
+        Set<TenantResourceQuotaWarning>();
+
+    public DbSet<TenantLifecycleRecord> TenantLifecycleRecords => Set<TenantLifecycleRecord>();
 
     public DbSet<Role> Roles => Set<Role>();
 
@@ -89,6 +98,10 @@ public sealed class MiniAdminDbContext(
     public DbSet<ScheduledJobLog> ScheduledJobLogs => Set<ScheduledJobLog>();
 
     public DbSet<ScheduledJobLogDetail> ScheduledJobLogDetails => Set<ScheduledJobLogDetail>();
+
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
 
     public DbSet<Alert> Alerts => Set<Alert>();
 
@@ -209,6 +222,32 @@ public sealed class MiniAdminDbContext(
             entity.Property(x => x.Name).HasMaxLength(128).IsRequired();
             entity.Property(x => x.MenuIds).HasColumnType("longtext").IsRequired();
             entity.Property(x => x.Remark).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<TenantResourceQuotaWarning>(entity =>
+        {
+            entity.ToTable("mini_tenant_resource_quota_warnings");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.ResourceType }).IsUnique();
+            entity.HasIndex(x => x.LastCheckedAt);
+            entity.Property(x => x.ResourceType).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.LastNotifiedStatus).HasMaxLength(32);
+        });
+
+        modelBuilder.Entity<TenantLifecycleRecord>(entity =>
+        {
+            entity.ToTable("mini_tenant_lifecycle_records");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.HasIndex(x => x.DeduplicationKey).IsUnique();
+            entity.Property(x => x.EventType).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Source).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.OperatorUserName).HasMaxLength(64);
+            entity.Property(x => x.FromStatus).HasMaxLength(32);
+            entity.Property(x => x.ToStatus).HasMaxLength(32);
+            entity.Property(x => x.Description).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.DeduplicationKey).HasMaxLength(128);
         });
 
         modelBuilder.Entity<Role>(entity =>
@@ -404,6 +443,7 @@ public sealed class MiniAdminDbContext(
             entity.ToTable("mini_files");
             entity.HasKey(x => x.Id);
             entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => x.TenantId);
             entity.Property(x => x.OriginalName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.StoredName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ContentType).HasMaxLength(128).IsRequired();
@@ -483,6 +523,32 @@ public sealed class MiniAdminDbContext(
             entity.Property(x => x.Description).HasMaxLength(512);
             entity.Property(x => x.LastStatus).HasMaxLength(32).IsRequired();
             entity.Property(x => x.LastMessage).HasMaxLength(1024);
+            entity.Property(x => x.LeaseOwner).HasMaxLength(128);
+            entity.HasIndex(x => x.LeaseExpiresAt);
+        });
+
+        modelBuilder.Entity<OutboxMessage>(entity =>
+        {
+            entity.ToTable("mini_outbox_messages");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            entity.HasIndex(x => x.LeaseExpiresAt);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.Property(x => x.EventType).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.Payload).HasColumnType("longtext").IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.CorrelationId).HasMaxLength(128);
+            entity.Property(x => x.LeaseOwner).HasMaxLength(128);
+            entity.Property(x => x.LastError).HasMaxLength(4000);
+        });
+
+        modelBuilder.Entity<InboxMessage>(entity =>
+        {
+            entity.ToTable("mini_inbox_messages");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.MessageId, x.ConsumerName }).IsUnique();
+            entity.HasIndex(x => x.ProcessedAt);
+            entity.Property(x => x.ConsumerName).HasMaxLength(512).IsRequired();
         });
 
         modelBuilder.Entity<ScheduledJobLog>(entity =>

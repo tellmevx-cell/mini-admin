@@ -1,6 +1,7 @@
 using MiniAdmin.Application.Contracts.Auth;
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.Parameters;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
 using MiniAdmin.Application.Contracts.Users;
 
 namespace MiniAdmin.Application.Users;
@@ -9,7 +10,8 @@ public sealed class UserAppService(
     IUserRepository userRepository,
     IUserImportExportService userImportExportService,
     ILoginSecurityService loginSecurityService,
-    ISystemParameterRepository systemParameterRepository) : IUserAppService
+    ISystemParameterRepository systemParameterRepository,
+    ITenantResourceQuotaService tenantResourceQuotaService) : IUserAppService
 {
     private static readonly string[] ImportHeaders =
     [
@@ -119,7 +121,18 @@ public sealed class UserAppService(
             return new UserImportResultDto(0, importRows.Errors);
         }
 
-        return await userRepository.ImportAsync(importRows.Rows, currentUserName, cancellationToken);
+        var validation = await userRepository.ValidateImportAsync(
+            importRows.Rows,
+            currentUserName,
+            cancellationToken);
+        await tenantResourceQuotaService.EnsureCanAddUsersAsync(
+            validation.CreatedCount,
+            cancellationToken);
+
+        return await tenantResourceQuotaService.ExecuteUserWriteAsync(
+            validation.CreatedCount,
+            token => userRepository.ImportAsync(importRows.Rows, currentUserName, token),
+            cancellationToken);
     }
 
     public async Task<UserImportResultDto> PreviewImportAsync(
@@ -135,7 +148,15 @@ public sealed class UserAppService(
             return new UserImportResultDto(0, importRows.Errors);
         }
 
-        return await userRepository.ValidateImportAsync(importRows.Rows, currentUserName, cancellationToken);
+        var validation = await userRepository.ValidateImportAsync(
+            importRows.Rows,
+            currentUserName,
+            cancellationToken);
+        await tenantResourceQuotaService.EnsureCanAddUsersAsync(
+            validation.CreatedCount,
+            cancellationToken);
+
+        return validation;
     }
 
     public async Task<UserExportFileDto> ExportImportErrorsAsync(
@@ -181,7 +202,10 @@ public sealed class UserAppService(
         CreateUserRequest request,
         CancellationToken cancellationToken = default)
     {
-        return userRepository.CreateAsync(request, cancellationToken);
+        return tenantResourceQuotaService.ExecuteUserWriteAsync(
+            1,
+            token => userRepository.CreateAsync(request, token),
+            cancellationToken);
     }
 
     public Task<UserListItemDto?> UpdateAsync(

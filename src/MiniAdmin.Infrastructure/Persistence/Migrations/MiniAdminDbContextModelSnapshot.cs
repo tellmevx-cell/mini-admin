@@ -17,10 +17,77 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.0")
+                .HasAnnotation("ProductVersion", "9.0.9")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.AbacPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ConditionsJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("Effect")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("SubjectId")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("SubjectType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SubjectType", "SubjectId");
+
+                    b.HasIndex("TenantId", "Resource", "Action", "IsEnabled");
+
+                    b.ToTable("mini_abac_policies", (string)null);
+                });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.Alert", b =>
                 {
@@ -317,6 +384,200 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.ToTable("mini_audit_logs", (string)null);
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.ChatConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("ParticipantOneId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("ParticipantTwoId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TenantScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParticipantOneId");
+
+                    b.HasIndex("ParticipantTwoId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("TenantScopeKey", "ParticipantOneId", "ParticipantTwoId")
+                        .IsUnique();
+
+                    b.ToTable("mini_chat_conversations", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.ChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("ReceiverId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderId");
+
+                    b.HasIndex("ConversationId", "CreatedAt");
+
+                    b.HasIndex("ReceiverId", "ReadAt");
+
+                    b.ToTable("mini_chat_messages", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.CodeGenerationHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("BusinessName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
+
+                    b.Property<string>("FilesJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ModuleName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid?>("OperatorUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("OperatorUserName")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("PermissionPrefix")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("RequestJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("TenantMode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ModuleName");
+
+                    b.ToTable("mini_code_generation_histories", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.Customer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("Content");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("IsPublished")
+                        .HasColumnType("int")
+                        .HasColumnName("IsPublished");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("PublishedAt");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("TenantId");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("Title");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)")
+                        .HasColumnName("Type");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("mini_customer", (string)null);
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.DataSeedVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -377,12 +638,15 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
-                        .IsUnique();
-
                     b.HasIndex("ParentId");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique();
 
                     b.ToTable("mini_departments", (string)null);
                 });
@@ -452,6 +716,33 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("mini_dictionary_types", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.InboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ConsumerName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("ProcessedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProcessedAt");
+
+                    b.HasIndex("MessageId", "ConsumerName")
+                        .IsUnique();
+
+                    b.ToTable("mini_inbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.LoginLog", b =>
@@ -541,9 +832,14 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("TenantId");
 
                     b.ToTable("mini_files", (string)null);
                 });
@@ -713,10 +1009,181 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.ToTable("mini_notification_deliveries", (string)null);
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.NotificationPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("EnableEmail")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("EnableInApp")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("EnableWebhook")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("EventCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("RecipientStrategy")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("EventCode")
+                        .IsUnique();
+
+                    b.ToTable("mini_notification_policies", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.NotificationSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("EnableEmail")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("EnableInApp")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("EnableWebhook")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("EventCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventCode");
+
+                    b.HasIndex("UserId", "EventCode")
+                        .IsUnique();
+
+                    b.ToTable("mini_notification_subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.NotificationTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Channel")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("LinkTemplate")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("MessageTemplate")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TitleTemplate")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("mini_notification_templates", (string)null);
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.OnlineUser", b =>
                 {
                     b.Property<Guid>("SessionId")
                         .ValueGeneratedOnAdd()
+                        .HasMaxLength(36)
                         .HasColumnType("char(36)");
 
                     b.Property<string>("BrowserName")
@@ -750,6 +1217,7 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(512)");
 
                     b.Property<Guid>("UserId")
+                        .HasMaxLength(36)
                         .HasColumnType("char(36)");
 
                     b.Property<string>("UserName")
@@ -764,6 +1232,167 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserName");
 
                     b.ToTable("mini_online_users", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.OpenApiCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AppKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("PermissionsJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SecretCiphertext")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId", "IsEnabled");
+
+                    b.ToTable("mini_openapi_credentials", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.OpenApiNonce", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("CredentialId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Nonce")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("CredentialId", "Nonce")
+                        .IsUnique();
+
+                    b.ToTable("mini_openapi_nonces", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("LeaseExpiresAt");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.ToTable("mini_outbox_messages", (string)null);
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.Position", b =>
@@ -792,9 +1421,12 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("varchar(512)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("TenantId", "Code")
                         .IsUnique();
 
                     b.ToTable("mini_positions", (string)null);
@@ -811,6 +1443,9 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<string>("CustomDepartmentIds")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("DataScope")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -824,9 +1459,12 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("varchar(128)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("TenantId", "Code")
                         .IsUnique();
 
                     b.ToTable("mini_roles", (string)null);
@@ -845,6 +1483,74 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.HasIndex("MenuId");
 
                     b.ToTable("mini_role_menus", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.SampleOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("ContentType");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("OriginalName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("OriginalName");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("Size");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("Status");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("StoragePath");
+
+                    b.Property<string>("StorageProvider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("StorageProvider");
+
+                    b.Property<string>("StoredName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("StoredName");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("TenantId");
+
+                    b.Property<Guid?>("WorkflowInstanceId")
+                        .HasColumnType("char(36)")
+                        .HasColumnName("WorkflowInstanceId");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("WorkflowInstanceId");
+
+                    b.ToTable("biz_sample_order", (string)null);
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.ScheduledJob", b =>
@@ -871,6 +1577,9 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<DateTimeOffset?>("LastHeartbeatAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<string>("LastMessage")
                         .HasMaxLength(1024)
                         .HasColumnType("varchar(1024)");
@@ -882,6 +1591,16 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -898,6 +1617,8 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("JobKey")
                         .IsUnique();
+
+                    b.HasIndex("LeaseExpiresAt");
 
                     b.HasIndex("NextRunAt");
 
@@ -1129,6 +1850,237 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.ToTable("mini_system_parameters", (string)null);
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.Tenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ContactEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("ContactName")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset?>("ExpireAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("InitializationError")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("InitializationStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("InitializationTemplateCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset?>("InitializedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("PackageId");
+
+                    b.ToTable("mini_tenants", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.TenantLifecycleRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DeduplicationKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset?>("NewExpireAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("NewPackageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("OperatorUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("OperatorUserName")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset?>("PreviousExpireAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("PreviousPackageId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<int?>("ReminderDays")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ToStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeduplicationKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.ToTable("mini_tenant_lifecycle_records", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.TenantPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("MaxStorageMb")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MaxUsers")
+                        .HasColumnType("int");
+
+                    b.Property<string>("MenuIds")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("mini_tenant_packages", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.TenantResourceQuotaWarning", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("LastCheckedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset?>("LastNotifiedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LastNotifiedStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<long>("LimitValue")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("NotificationSequence")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("UsedValue")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastCheckedAt");
+
+                    b.HasIndex("TenantId", "ResourceType")
+                        .IsUnique();
+
+                    b.ToTable("mini_tenant_resource_quota_warnings", (string)null);
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1163,6 +2115,9 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("UserName")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -1173,6 +2128,8 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("PositionId");
+
+                    b.HasIndex("TenantId");
 
                     b.HasIndex("UserName")
                         .IsUnique();
@@ -1259,6 +2216,487 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.ToTable("mini_user_roles", (string)null);
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowActionLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("NodeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid>("OperatorUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("OperatorUserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstanceId");
+
+                    b.ToTable("mini_workflow_action_logs", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<Guid>("UploaderUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("UploaderUserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId");
+
+                    b.HasIndex("InstanceId");
+
+                    b.HasIndex("InstanceId", "FileId")
+                        .IsUnique();
+
+                    b.ToTable("mini_workflow_attachments", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowBusinessBinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("BusinessName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("BusinessType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("DefinitionId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Remark")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DefinitionId");
+
+                    b.HasIndex("TenantId", "BusinessType")
+                        .IsUnique();
+
+                    b.ToTable("mini_workflow_business_bindings", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowCcRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("NodeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("NodeName")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("RecipientUserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid?>("SenderUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SenderUserName")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstanceId");
+
+                    b.HasIndex("RecipientUserId", "ReadAt");
+
+                    b.HasIndex("InstanceId", "NodeId", "RecipientUserId")
+                        .IsUnique();
+
+                    b.ToTable("mini_workflow_cc_records", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("AuthorUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AuthorUserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstanceId");
+
+                    b.ToTable("mini_workflow_comments", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("DesignerJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("FormName")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("FormSchemaJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("PublishStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Code", "Version")
+                        .IsUnique();
+
+                    b.ToTable("mini_workflow_definitions", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowInstance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("BusinessKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CurrentNodeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("CurrentNodeName")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("DefinitionCode")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("DefinitionId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("DefinitionName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("DefinitionSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("DefinitionVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FormDataJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<Guid>("InitiatorUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("InitiatorUserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DefinitionId");
+
+                    b.HasIndex("InitiatorUserId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("mini_workflow_instances", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowNode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ApprovalMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("Any");
+
+                    b.Property<Guid?>("ApproverRoleId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ApproverType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid?>("ApproverUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("DefinitionId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("DesignerNodeId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("NodeType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SlaMinutes")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApproverRoleId");
+
+                    b.HasIndex("ApproverUserId");
+
+                    b.HasIndex("DefinitionId");
+
+                    b.ToTable("mini_workflow_nodes", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("ApproverUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ApproverUserName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset?>("DueAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("InstanceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset?>("LastAutoRemindedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("NodeName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstanceId");
+
+                    b.HasIndex("NodeId");
+
+                    b.HasIndex("ApproverUserId", "Status");
+
+                    b.ToTable("mini_workflow_tasks", (string)null);
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.AbacPolicy", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Tenant");
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.AlertRuleRecipient", b =>
                 {
                     b.HasOne("MiniAdmin.Domain.Entities.AlertRule", "AlertRule")
@@ -1281,6 +2719,59 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.Navigation("AuditLog");
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.ChatConversation", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "ParticipantOne")
+                        .WithMany()
+                        .HasForeignKey("ParticipantOneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "ParticipantTwo")
+                        .WithMany()
+                        .HasForeignKey("ParticipantTwoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("ParticipantOne");
+
+                    b.Navigation("ParticipantTwo");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.ChatMessage", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.ChatConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "Receiver")
+                        .WithMany()
+                        .HasForeignKey("ReceiverId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Receiver");
+
+                    b.Navigation("Sender");
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.Department", b =>
                 {
                     b.HasOne("MiniAdmin.Domain.Entities.Department", "Parent")
@@ -1288,7 +2779,14 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Parent");
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.DictionaryItem", b =>
@@ -1321,6 +2819,76 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.NotificationSubscription", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.NotificationTemplate", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.OpenApiCredential", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.OpenApiNonce", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.OpenApiCredential", "Credential")
+                        .WithMany()
+                        .HasForeignKey("CredentialId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Credential");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.Position", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.Role", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.RoleMenu", b =>
@@ -1364,6 +2932,16 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.Navigation("Log");
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.Tenant", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.TenantPackage", "Package")
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Package");
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.User", b =>
                 {
                     b.HasOne("MiniAdmin.Domain.Entities.Department", "Department")
@@ -1376,9 +2954,16 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                         .HasForeignKey("PositionId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Department");
 
                     b.Navigation("Position");
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.UserNotification", b =>
@@ -1411,6 +2996,172 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowActionLog", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowInstance", "Instance")
+                        .WithMany("ActionLogs")
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Instance");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowAttachment", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.ManagedFile", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowInstance", "Instance")
+                        .WithMany("Attachments")
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
+
+                    b.Navigation("Instance");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowBusinessBinding", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowCcRecord", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowInstance", "Instance")
+                        .WithMany("CcRecords")
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "RecipientUser")
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Instance");
+
+                    b.Navigation("RecipientUser");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowComment", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowInstance", "Instance")
+                        .WithMany("Comments")
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Instance");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowInstance", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowDefinition", "Definition")
+                        .WithMany()
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "InitiatorUser")
+                        .WithMany()
+                        .HasForeignKey("InitiatorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Definition");
+
+                    b.Navigation("InitiatorUser");
+
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowNode", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.Role", "ApproverRole")
+                        .WithMany()
+                        .HasForeignKey("ApproverRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "ApproverUser")
+                        .WithMany()
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowDefinition", "Definition")
+                        .WithMany("Nodes")
+                        .HasForeignKey("DefinitionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ApproverRole");
+
+                    b.Navigation("ApproverUser");
+
+                    b.Navigation("Definition");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowTask", b =>
+                {
+                    b.HasOne("MiniAdmin.Domain.Entities.User", "ApproverUser")
+                        .WithMany()
+                        .HasForeignKey("ApproverUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowInstance", "Instance")
+                        .WithMany("Tasks")
+                        .HasForeignKey("InstanceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MiniAdmin.Domain.Entities.WorkflowNode", "Node")
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ApproverUser");
+
+                    b.Navigation("Instance");
+
+                    b.Navigation("Node");
+                });
+
             modelBuilder.Entity("MiniAdmin.Domain.Entities.AlertRule", b =>
                 {
                     b.Navigation("Recipients");
@@ -1419,6 +3170,11 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("MiniAdmin.Domain.Entities.AuditLog", b =>
                 {
                     b.Navigation("EntityChanges");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.ChatConversation", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("MiniAdmin.Domain.Entities.Department", b =>
@@ -1458,6 +3214,24 @@ namespace MiniAdmin.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("MiniAdmin.Domain.Entities.User", b =>
                 {
                     b.Navigation("UserRoles");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowDefinition", b =>
+                {
+                    b.Navigation("Nodes");
+                });
+
+            modelBuilder.Entity("MiniAdmin.Domain.Entities.WorkflowInstance", b =>
+                {
+                    b.Navigation("ActionLogs");
+
+                    b.Navigation("Attachments");
+
+                    b.Navigation("CcRecords");
+
+                    b.Navigation("Comments");
+
+                    b.Navigation("Tasks");
                 });
 #pragma warning restore 612, 618
         }

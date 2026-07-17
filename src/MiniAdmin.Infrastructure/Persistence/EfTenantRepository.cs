@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Auth;
-using MiniAdmin.Application.Contracts.Caching;
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.MultiTenancy;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
 using MiniAdmin.Application.Contracts.Tenants;
 using MiniAdmin.Domain.Entities;
 using MiniAdmin.Domain.Shared.MultiTenancy;
@@ -12,9 +12,11 @@ namespace MiniAdmin.Infrastructure.Persistence;
 public sealed class EfTenantRepository(
     MiniAdminDbContext dbContext,
     IPasswordService passwordService,
-    IUserAuthorizationCache userAuthorizationCache,
+    TenantSessionInvalidator tenantSessionInvalidator,
     TenantInitializationTemplateService initializationTemplateService) : ITenantRepository
 {
+    private const long BytesPerMb = 1024L * 1024L;
+
     public Task<TenantLookupDto?> FindByCodeAsync(
         string code,
         CancellationToken cancellationToken = default)
@@ -66,12 +68,41 @@ public sealed class EfTenantRepository(
         }
 
         var total = await tenantsQuery.CountAsync(cancellationToken);
-        var items = await tenantsQuery
+        var tenants = await tenantsQuery
             .OrderByDescending(x => x.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(x => ToDto(x))
             .ToArrayAsync(cancellationToken);
+
+        var tenantIds = tenants.Select(x => x.Id).ToArray();
+        var userUsage = await dbContext.Users
+            .AsNoTracking()
+            .Where(x => x.TenantId.HasValue && tenantIds.Contains(x.TenantId.Value))
+            .GroupBy(x => x.TenantId!.Value)
+            .Select(group => new { TenantId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(x => x.TenantId, x => x.Count, cancellationToken);
+        var storageUsage = await dbContext.ManagedFiles
+            .AsNoTracking()
+            .Where(x => x.TenantId.HasValue && tenantIds.Contains(x.TenantId.Value))
+            .GroupBy(x => x.TenantId!.Value)
+            .Select(group => new { TenantId = group.Key, Bytes = group.Sum(x => x.Size) })
+            .ToDictionaryAsync(x => x.TenantId, x => x.Bytes, cancellationToken);
+        var quotaNotificationTimes = (await dbContext.TenantResourceQuotaWarnings
+                .AsNoTracking()
+                .Where(x => tenantIds.Contains(x.TenantId) && x.LastNotifiedAt.HasValue)
+                .Select(x => new { x.TenantId, x.LastNotifiedAt })
+                .ToArrayAsync(cancellationToken))
+            .GroupBy(x => x.TenantId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Max(x => x.LastNotifiedAt));
+        var items = tenants
+            .Select(tenant => ToDto(
+                tenant,
+                userUsage.GetValueOrDefault(tenant.Id),
+                storageUsage.GetValueOrDefault(tenant.Id),
+                quotaNotificationTimes.GetValueOrDefault(tenant.Id)))
+            .ToArray();
 
         return new PageResult<TenantDto>(items, total);
     }
@@ -96,6 +127,7 @@ public sealed class EfTenantRepository(
 
     public async Task<TenantDto> CreateAsync(
         CreateTenantRequest request,
+        TenantOperationActor actor,
         CancellationToken cancellationToken = default)
     {
         EnsureExpireAtIsInFuture(request.ExpireAt);
@@ -171,6 +203,17 @@ public sealed class EfTenantRepository(
 
         dbContext.Tenants.Add(tenant);
         dbContext.Users.Add(adminUser);
+        AddLifecycleRecord(
+            tenant.Id,
+            TenantLifecycleEventTypes.Created,
+            actor,
+            null,
+            TenantStatus.Active,
+            null,
+            tenant.ExpireAt,
+            null,
+            tenant.PackageId,
+            "租户已创建");
         await initializationTemplateService.InitializeAsync(
             tenant,
             adminUser,
@@ -178,12 +221,13 @@ public sealed class EfTenantRepository(
             cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToDto(tenant);
+        return await BuildDtoAsync(tenant.Id, cancellationToken);
     }
 
     public async Task<TenantDto?> UpdateAsync(
         Guid id,
         UpdateTenantRequest request,
+        TenantOperationActor actor,
         CancellationToken cancellationToken = default)
     {
         var tenant = await dbContext.Tenants
@@ -197,6 +241,8 @@ public sealed class EfTenantRepository(
         EnsureExpireAtIsInFuture(request.ExpireAt);
 
         var oldPackageId = tenant.PackageId;
+        var oldExpireAt = tenant.ExpireAt;
+        var oldEffectiveStatus = GetEffectiveStatus(tenant);
         tenant.Name = NormalizeRequired(request.Name, "租户名称不能为空");
         tenant.PackageId = await ResolvePackageIdAsync(request.PackageId, cancellationToken);
         tenant.ContactName = NormalizeOptional(request.ContactName);
@@ -206,9 +252,65 @@ public sealed class EfTenantRepository(
         tenant.Remark = NormalizeOptional(request.Remark);
         tenant.UpdatedAt = DateTimeOffset.UtcNow;
 
+        var shouldInvalidateSessions = oldPackageId != tenant.PackageId;
         if (oldPackageId != tenant.PackageId)
         {
-            await InvalidateTenantUsersAsync(tenant.Id, cancellationToken);
+            AddLifecycleRecord(
+                tenant.Id,
+                TenantLifecycleEventTypes.PackageChanged,
+                actor,
+                oldEffectiveStatus,
+                GetEffectiveStatus(tenant),
+                oldExpireAt,
+                tenant.ExpireAt,
+                oldPackageId,
+                tenant.PackageId,
+                "租户套餐已调整");
+        }
+
+        if (oldExpireAt != tenant.ExpireAt)
+        {
+            var eventType = tenant.ExpireAt.HasValue &&
+                            (!oldExpireAt.HasValue || tenant.ExpireAt.Value > oldExpireAt.Value)
+                ? TenantLifecycleEventTypes.Renewed
+                : TenantLifecycleEventTypes.ExpirationChanged;
+            AddLifecycleRecord(
+                tenant.Id,
+                eventType,
+                actor,
+                oldEffectiveStatus,
+                GetEffectiveStatus(tenant),
+                oldExpireAt,
+                tenant.ExpireAt,
+                oldPackageId,
+                tenant.PackageId,
+                DescribeExpireAtChange(oldExpireAt, tenant.ExpireAt));
+
+            if (oldEffectiveStatus == TenantStatus.Expired &&
+                GetEffectiveStatus(tenant) == TenantStatus.Active)
+            {
+                shouldInvalidateSessions = true;
+            }
+        }
+
+        if (shouldInvalidateSessions)
+        {
+            await tenantSessionInvalidator.InvalidateAsync(tenant.Id, cancellationToken);
+        }
+
+        if (oldPackageId == tenant.PackageId && oldExpireAt == tenant.ExpireAt)
+        {
+            AddLifecycleRecord(
+                tenant.Id,
+                TenantLifecycleEventTypes.Updated,
+                actor,
+                oldEffectiveStatus,
+                GetEffectiveStatus(tenant),
+                oldExpireAt,
+                tenant.ExpireAt,
+                oldPackageId,
+                tenant.PackageId,
+                "租户资料已更新");
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -221,12 +323,13 @@ public sealed class EfTenantRepository(
                 : null;
         }
 
-        return ToDto(tenant);
+        return await BuildDtoAsync(tenant.Id, cancellationToken);
     }
 
     public async Task<TenantDto?> SetStatusAsync(
         Guid id,
         string status,
+        TenantOperationActor actor,
         CancellationToken cancellationToken = default)
     {
         var tenant = await dbContext.Tenants.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -235,17 +338,90 @@ public sealed class EfTenantRepository(
             return null;
         }
 
-        tenant.Status = ParseStatus(status);
+        var oldStatus = GetEffectiveStatus(tenant);
+        var newStatus = ParseStatus(status);
+        if (newStatus == TenantStatus.Active &&
+            tenant.ExpireAt.HasValue &&
+            tenant.ExpireAt.Value <= DateTimeOffset.UtcNow)
+        {
+            throw new InvalidOperationException("租户已过期，请先续期后再启用");
+        }
+
+        if (oldStatus == newStatus && tenant.Status == newStatus)
+        {
+            return await BuildDtoAsync(tenant.Id, cancellationToken);
+        }
+
+        tenant.Status = newStatus;
         tenant.UpdatedAt = DateTimeOffset.UtcNow;
 
         if (tenant.Status != TenantStatus.Active)
         {
-            await InvalidateTenantUsersAsync(tenant.Id, cancellationToken);
+            await tenantSessionInvalidator.InvalidateAsync(tenant.Id, cancellationToken);
         }
+
+        AddLifecycleRecord(
+            tenant.Id,
+            tenant.Status == TenantStatus.Active
+                ? TenantLifecycleEventTypes.Enabled
+                : TenantLifecycleEventTypes.Disabled,
+            actor,
+            oldStatus,
+            tenant.Status,
+            tenant.ExpireAt,
+            tenant.ExpireAt,
+            tenant.PackageId,
+            tenant.PackageId,
+            tenant.Status == TenantStatus.Active ? "租户已启用" : "租户已停用");
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return ToDto(tenant);
+        return await BuildDtoAsync(tenant.Id, cancellationToken);
+    }
+
+    public async Task<TenantDto?> RenewAsync(
+        Guid id,
+        RenewTenantRequest request,
+        TenantOperationActor actor,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureExpireAtIsInFuture(request.ExpireAt);
+        var tenant = await dbContext.Tenants
+            .SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (tenant is null)
+        {
+            return null;
+        }
+
+        var oldStatus = GetEffectiveStatus(tenant);
+        var oldExpireAt = tenant.ExpireAt;
+        tenant.ExpireAt = request.ExpireAt;
+        if (request.Reactivate)
+        {
+            tenant.Status = TenantStatus.Active;
+        }
+        if (!string.IsNullOrWhiteSpace(request.Remark))
+        {
+            tenant.Remark = request.Remark.Trim();
+        }
+        tenant.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await tenantSessionInvalidator.InvalidateAsync(tenant.Id, cancellationToken);
+
+        AddLifecycleRecord(
+            tenant.Id,
+            TenantLifecycleEventTypes.Renewed,
+            actor,
+            oldStatus,
+            GetEffectiveStatus(tenant),
+            oldExpireAt,
+            tenant.ExpireAt,
+            tenant.PackageId,
+            tenant.PackageId,
+            DescribeExpireAtChange(oldExpireAt, tenant.ExpireAt));
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await BuildDtoAsync(tenant.Id, cancellationToken);
     }
 
     public Task<TenantLookupDto?> FindByIdAsync(
@@ -340,31 +516,6 @@ public sealed class EfTenantRepository(
         ];
     }
 
-    private async Task InvalidateTenantUsersAsync(Guid tenantId, CancellationToken cancellationToken)
-    {
-        var users = await dbContext.Users
-            .Where(x => x.TenantId == tenantId)
-            .ToArrayAsync(cancellationToken);
-
-        foreach (var user in users)
-        {
-            user.SecurityStamp = CreateSecurityStamp();
-            await userAuthorizationCache.RemoveUserAsync(user.Id, user.UserName, cancellationToken);
-        }
-
-        var onlineUsers = await (
-                from onlineUser in dbContext.OnlineUsers
-                join user in dbContext.Users on onlineUser.UserId equals user.Id
-                where user.TenantId == tenantId && onlineUser.IsOnline
-                select onlineUser)
-            .ToArrayAsync(cancellationToken);
-        foreach (var onlineUser in onlineUsers)
-        {
-            onlineUser.IsOnline = false;
-            onlineUser.LastActiveAt = DateTimeOffset.UtcNow;
-        }
-    }
-
     private async Task<Guid?> ResolvePackageIdAsync(
         Guid? requestedPackageId,
         CancellationToken cancellationToken)
@@ -380,7 +531,32 @@ public sealed class EfTenantRepository(
         return packageId;
     }
 
-    private static TenantDto ToDto(Tenant tenant)
+    private async Task<TenantDto> BuildDtoAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var tenant = await dbContext.Tenants
+            .AsNoTracking()
+            .Include(x => x.Package)
+            .SingleAsync(x => x.Id == tenantId, cancellationToken);
+        var usedUsers = await dbContext.Users
+            .AsNoTracking()
+            .CountAsync(x => x.TenantId == tenantId, cancellationToken);
+        var usedStorageBytes = await dbContext.ManagedFiles
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .SumAsync(x => (long?)x.Size, cancellationToken) ?? 0;
+        var quotaLastNotifiedAt = await dbContext.TenantResourceQuotaWarnings
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId)
+            .MaxAsync(x => (DateTimeOffset?)x.LastNotifiedAt, cancellationToken);
+
+        return ToDto(tenant, usedUsers, usedStorageBytes, quotaLastNotifiedAt);
+    }
+
+    private static TenantDto ToDto(
+        Tenant tenant,
+        int usedUsers,
+        long usedStorageBytes,
+        DateTimeOffset? quotaLastNotifiedAt = null)
     {
         var status = GetEffectiveStatus(tenant);
 
@@ -391,6 +567,15 @@ public sealed class EfTenantRepository(
             status.ToString(),
             tenant.PackageId?.ToString(),
             tenant.Package?.Name,
+            usedUsers,
+            Math.Max(tenant.Package?.MaxUsers ?? 0, 0),
+            usedStorageBytes,
+            checked((long)Math.Max(tenant.Package?.MaxStorageMb ?? 0, 0) * BytesPerMb),
+            TenantQuotaStatuses.Evaluate(usedUsers, Math.Max(tenant.Package?.MaxUsers ?? 0, 0)),
+            TenantQuotaStatuses.Evaluate(
+                usedStorageBytes,
+                checked((long)Math.Max(tenant.Package?.MaxStorageMb ?? 0, 0) * BytesPerMb)),
+            quotaLastNotifiedAt,
             tenant.InitializationTemplateCode,
             tenant.InitializationStatus,
             tenant.InitializedAt,
@@ -453,5 +638,45 @@ public sealed class EfTenantRepository(
     private static string CreateSecurityStamp()
     {
         return Guid.NewGuid().ToString("N");
+    }
+
+    private void AddLifecycleRecord(
+        Guid tenantId,
+        string eventType,
+        TenantOperationActor actor,
+        TenantStatus? fromStatus,
+        TenantStatus? toStatus,
+        DateTimeOffset? previousExpireAt,
+        DateTimeOffset? newExpireAt,
+        Guid? previousPackageId,
+        Guid? newPackageId,
+        string description)
+    {
+        dbContext.TenantLifecycleRecords.Add(new TenantLifecycleRecord
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenantId,
+            EventType = eventType,
+            Source = actor.Source,
+            OperatorUserId = actor.UserId,
+            OperatorUserName = NormalizeOptional(actor.UserName),
+            FromStatus = fromStatus?.ToString(),
+            ToStatus = toStatus?.ToString(),
+            PreviousExpireAt = previousExpireAt,
+            NewExpireAt = newExpireAt,
+            PreviousPackageId = previousPackageId,
+            NewPackageId = newPackageId,
+            Description = description,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+    }
+
+    private static string DescribeExpireAtChange(
+        DateTimeOffset? previousExpireAt,
+        DateTimeOffset? newExpireAt)
+    {
+        var previous = previousExpireAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "不限制";
+        var next = newExpireAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "不限制";
+        return $"到期时间由 {previous} 调整为 {next}";
     }
 }

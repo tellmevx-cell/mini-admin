@@ -144,15 +144,61 @@ public static class PlatformEndpointExtensions
         })
         .RequirePermission("platform:tenant:update");
 
+        app.MapGet("/platform/tenant/{id:guid}/lifecycle-records", async (
+            Guid id,
+            int? page,
+            int? pageSize,
+            string? eventType,
+            ITenantAppService tenantAppService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await tenantAppService.GetLifecycleRecordsAsync(
+                id,
+                new TenantLifecycleRecordListQuery(
+                    page ?? 1,
+                    pageSize ?? 20,
+                    eventType),
+                cancellationToken);
+            return Results.Ok(ApiResponse<PageResult<TenantLifecycleRecordDto>>.Ok(result));
+        })
+        .RequirePermission("platform:tenant:query");
+
+        app.MapPost("/platform/tenant/{id:guid}/renew", async (
+            Guid id,
+            RenewTenantRequest request,
+            ITenantAppService tenantAppService,
+            CancellationToken cancellationToken) =>
+        {
+            try
+            {
+                var tenant = await tenantAppService.RenewAsync(id, request, cancellationToken);
+                return tenant is null
+                    ? Results.NotFound(ApiResponse<TenantDto>.Fail("Tenant not found."))
+                    : Results.Ok(ApiResponse<TenantDto>.Ok(tenant));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.BadRequest(ApiResponse<TenantDto?>.Fail(exception.Message));
+            }
+        })
+        .RequirePermission("platform:tenant:update");
+
         app.MapPost("/platform/tenant/{id:guid}/enable", async (
             Guid id,
             ITenantAppService tenantAppService,
             CancellationToken cancellationToken) =>
         {
-            var tenant = await tenantAppService.EnableAsync(id, cancellationToken);
-            return tenant is null
-                ? Results.NotFound(ApiResponse<TenantDto>.Fail("Tenant not found."))
-                : Results.Ok(ApiResponse<TenantDto>.Ok(tenant));
+            try
+            {
+                var tenant = await tenantAppService.EnableAsync(id, cancellationToken);
+                return tenant is null
+                    ? Results.NotFound(ApiResponse<TenantDto>.Fail("Tenant not found."))
+                    : Results.Ok(ApiResponse<TenantDto>.Ok(tenant));
+            }
+            catch (InvalidOperationException exception)
+            {
+                return Results.BadRequest(ApiResponse<TenantDto?>.Fail(exception.Message));
+            }
         })
         .RequirePermission("platform:tenant:enable");
 

@@ -1,3 +1,4 @@
+using System.Reflection;
 using MiniAdmin.Api.CodeGenerators;
 using MiniAdmin.Api.Hubs;
 using MiniAdmin.Api.Security;
@@ -14,6 +15,7 @@ using MiniAdmin.Application.Contracts.Chat;
 using MiniAdmin.Application.Contracts.CodeGenerators;
 using MiniAdmin.Application.Contracts.Departments;
 using MiniAdmin.Application.Contracts.Dictionaries;
+using MiniAdmin.Application.Contracts.Events;
 using MiniAdmin.Application.Contracts.Files;
 using MiniAdmin.Application.Contracts.Menus;
 using MiniAdmin.Application.Contracts.Notices;
@@ -36,6 +38,7 @@ using MiniAdmin.Application.Chat;
 using MiniAdmin.Application.Departments;
 using MiniAdmin.Application.Dictionaries;
 using MiniAdmin.Application.Files;
+using MiniAdmin.Application.Events;
 using MiniAdmin.Application.Menus;
 using MiniAdmin.Application.Notices;
 using MiniAdmin.Application.OpenPlatform;
@@ -69,6 +72,10 @@ public static class MiniAdminApiServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddMiniAdminPersistence(configuration);
+        AddLocalEventHandlers(
+            services,
+            typeof(OutboxAppService).Assembly,
+            typeof(MiniAdminApiServiceCollectionExtensions).Assembly);
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUserContext, HttpContextCurrentUserContext>();
         services.AddScoped<IAppBrandingAppService, AppBrandingAppService>();
@@ -86,6 +93,7 @@ public static class MiniAdminApiServiceCollectionExtensions
         services.AddScoped<INotificationSubscriptionAppService, NotificationSubscriptionAppService>();
         services.AddScoped<INotificationTemplateRenderer, ScribanNotificationTemplateRenderer>();
         services.AddScoped<IFileAppService, FileAppService>();
+        services.AddScoped<IOutboxAppService, OutboxAppService>();
         services.AddScoped<IAuthAppService, AuthAppService>();
         services.AddScoped<IUserAppService, UserAppService>();
         services.AddScoped<IRoleAppService, RoleAppService>();
@@ -126,6 +134,28 @@ public static class MiniAdminApiServiceCollectionExtensions
                          providerType.IsAssignableFrom(type)))
         {
             services.TryAddEnumerable(ServiceDescriptor.Singleton(providerType, implementationType));
+        }
+    }
+
+    private static void AddLocalEventHandlers(
+        IServiceCollection services,
+        params Assembly[] assemblies)
+    {
+        var openHandlerType = typeof(ILocalEventHandler<>);
+        foreach (var implementation in assemblies
+                     .SelectMany(assembly => assembly.GetTypes())
+                     .Where(type =>
+                         !type.IsAbstract &&
+                         !type.IsInterface &&
+                         !type.ContainsGenericParameters)
+                     .OrderBy(type => type.FullName, StringComparer.Ordinal))
+        {
+            foreach (var serviceType in implementation.GetInterfaces().Where(type =>
+                         type.IsGenericType &&
+                         type.GetGenericTypeDefinition() == openHandlerType))
+            {
+                services.TryAddEnumerable(ServiceDescriptor.Scoped(serviceType, implementation));
+            }
         }
     }
 }

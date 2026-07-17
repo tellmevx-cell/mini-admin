@@ -76,7 +76,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -361,7 +362,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -445,7 +447,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -530,7 +533,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -823,7 +827,8 @@ public sealed class WorkflowAppServiceTests
                     2,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -925,7 +930,8 @@ public sealed class WorkflowAppServiceTests
                     "approve",
                     "Any")
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1010,7 +1016,8 @@ public sealed class WorkflowAppServiceTests
                     "approve",
                     "All")
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1103,7 +1110,8 @@ public sealed class WorkflowAppServiceTests
                     "approve",
                     "All")
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1202,7 +1210,8 @@ public sealed class WorkflowAppServiceTests
                     true,
                     "approve")
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1323,7 +1332,8 @@ public sealed class WorkflowAppServiceTests
                     true,
                     "approve")
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1442,7 +1452,8 @@ public sealed class WorkflowAppServiceTests
                     true,
                     "approve")
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1519,7 +1530,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var exception = await Assert.ThrowsAsync<WorkflowOperationException>(() =>
             service.StartInstanceAsync(
@@ -1582,7 +1594,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1653,7 +1666,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1719,7 +1733,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var publishedDefinition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedDefinition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1786,7 +1801,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var publishedDefinition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedDefinition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var exception = await Assert.ThrowsAsync<WorkflowOperationException>(() =>
             service.UpdateDefinitionAsync(
@@ -1854,7 +1870,8 @@ public sealed class WorkflowAppServiceTests
                     true)
             ],
             """[{"field":"days","label":"Days","component":"number","required":true}]"""));
-        var publishedV1 = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedV1 = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var v1Instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -1864,8 +1881,10 @@ public sealed class WorkflowAppServiceTests
                 """{"days":1}"""),
             new WorkflowUserContext(initiatorId, "starter"));
 
-        var draftV2 = await service.CreateNewVersionAsync(Guid.Parse(publishedV1.Id));
-        var publishedV2 = await service.PublishDefinitionAsync(Guid.Parse(draftV2!.Id));
+        var draftV2 = Assert.IsType<WorkflowDefinitionDto>(
+            await service.CreateNewVersionAsync(Guid.Parse(publishedV1.Id)));
+        var publishedV2 = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftV2.Id)));
         var v2Instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
                 Guid.Parse(publishedV2.Id),
@@ -1921,15 +1940,18 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var publishedV1 = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedV1 = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
-        var draftV2 = await service.CreateNewVersionAsync(Guid.Parse(publishedV1.Id));
+        var draftV2 = Assert.IsType<WorkflowDefinitionDto>(
+            await service.CreateNewVersionAsync(Guid.Parse(publishedV1.Id)));
         Assert.Equal(2, draftV2.Version);
         Assert.Equal("Draft", draftV2.PublishStatus);
         Assert.Equal("contract_apply", draftV2.Code);
         Assert.Single(draftV2.Nodes);
 
-        var publishedV2 = await service.PublishDefinitionAsync(Guid.Parse(draftV2.Id));
+        var publishedV2 = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftV2.Id)));
         var definitions = await service.GetDefinitionsAsync(new WorkflowDefinitionListQuery(Page: 1, PageSize: 10));
         var oldVersion = definitions.Items.Single(x => x.Id == publishedV1.Id);
         var newVersion = definitions.Items.Single(x => x.Id == publishedV2.Id);
@@ -1984,7 +2006,8 @@ public sealed class WorkflowAppServiceTests
                     true)
             ],
             FormSchemaJson: formSchemaJson));
-        var publishedDefinition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedDefinition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
         var options = await service.GetDefinitionOptionsAsync();
 
         Assert.Contains("\"field\":\"days\"", draftDefinition.FormSchemaJson);
@@ -2087,7 +2110,8 @@ public sealed class WorkflowAppServiceTests
                   {"field":"reason","label":"请假原因","component":"textarea","required":true}
                 ]
                 """));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var exception = await Assert.ThrowsAsync<WorkflowOperationException>(() =>
             service.StartInstanceAsync(
@@ -2149,7 +2173,8 @@ public sealed class WorkflowAppServiceTests
                   {"field":"type","label":"请假类型","component":"select","required":true,"options":[{"label":"事假","value":"personal"},{"label":"年假","value":"annual"}]}
                 ]
                 """));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var exception = await Assert.ThrowsAsync<WorkflowOperationException>(() =>
             service.StartInstanceAsync(
@@ -2212,7 +2237,8 @@ public sealed class WorkflowAppServiceTests
                   {"field":"type","label":"请假类型","component":"select","required":true,"options":[{"label":"事假","value":"personal"},{"label":"年假","value":"annual"}]}
                 ]
                 """));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -2308,7 +2334,8 @@ public sealed class WorkflowAppServiceTests
                     true,
                     SlaMinutes: 30)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var beforeStart = DateTimeOffset.UtcNow;
         var instance = await service.StartInstanceAsync(
@@ -2372,7 +2399,8 @@ public sealed class WorkflowAppServiceTests
                     true,
                     SlaMinutes: 1)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
                 Guid.Parse(definition.Id),
@@ -2440,7 +2468,8 @@ public sealed class WorkflowAppServiceTests
                     true,
                     SlaMinutes: 1)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
                 Guid.Parse(definition.Id),
@@ -2507,7 +2536,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
@@ -2567,7 +2597,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
                 Guid.Parse(definition.Id),
@@ -2634,7 +2665,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
                 Guid.Parse(definition.Id),
@@ -2707,7 +2739,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
         var instance = await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(
                 Guid.Parse(definition.Id),
@@ -2995,7 +3028,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var publishedDefinition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedDefinition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         await service.CreateBusinessBindingAsync(new SaveWorkflowBusinessBindingRequest(
             "contract",
@@ -3047,7 +3081,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var publishedDefinition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var publishedDefinition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         var binding = await service.CreateBusinessBindingAsync(new SaveWorkflowBusinessBindingRequest(
             "purchase",
@@ -3189,7 +3224,8 @@ public sealed class WorkflowAppServiceTests
                     1,
                     true)
             ]));
-        var definition = await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id));
+        var definition = Assert.IsType<WorkflowDefinitionDto>(
+            await service.PublishDefinitionAsync(Guid.Parse(draftDefinition.Id)));
 
         return await service.StartInstanceAsync(
             new StartWorkflowInstanceRequest(

@@ -10,10 +10,19 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+
 jobs:
   backend:
     name: Backend build and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,10 +36,40 @@ jobs:
         run: dotnet restore MiniAdmin.slnx
 
       - name: Build
-        run: dotnet build MiniAdmin.slnx --configuration Release --no-restore
+        run: dotnet build MiniAdmin.slnx --configuration Release --no-restore --warnaserror
 
       - name: Test
         run: dotnet test tests/MiniAdmin.Tests/MiniAdmin.Tests.csproj --configuration Release --no-build --logger trx --results-directory TestResults
+
+      - name: Install EF Core CLI
+        run: dotnet tool install --global dotnet-ef --version 9.0.9
+
+      - name: Generate idempotent migration scripts
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          Database__Provider: MySql
+          Database__InitializeOnStartup: "false"
+          ConnectionStrings__MiniAdmin: Server=127.0.0.1;Port=3306;Database=mini_admin_ci;User=ci;Password=ci;CharSet=utf8mb4;SslMode=None
+        run: |
+          mkdir -p artifacts/migrations
+          dotnet ef migrations script --idempotent \
+            --context MiniAdminDbContext \
+            --project src/MiniAdmin.Infrastructure/MiniAdmin.Infrastructure.csproj \
+            --startup-project src/MiniAdmin.Api/MiniAdmin.Api.csproj \
+            --configuration Release \
+            --no-build \
+            --output artifacts/migrations/miniadmin.sql
+          dotnet ef migrations script --idempotent \
+            --context OpenPlatformDbContext \
+            --project src/MiniAdmin.Infrastructure/MiniAdmin.Infrastructure.csproj \
+            --startup-project src/MiniAdmin.Api/MiniAdmin.Api.csproj \
+            --configuration Release \
+            --no-build \
+            --output artifacts/migrations/open-platform.sql
+          grep -q 'mini_outbox_messages' artifacts/migrations/miniadmin.sql
+          grep -q 'mini_inbox_messages' artifacts/migrations/miniadmin.sql
+          grep -q 'mini_tenant_lifecycle_records' artifacts/migrations/miniadmin.sql
+          grep -q 'OpenIddictApplications' artifacts/migrations/open-platform.sql
 
       - name: Upload test results
         if: always()
@@ -40,9 +79,45 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
+      - name: Upload migration scripts
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-migration-scripts
+          path: artifacts/migrations
+          if-no-files-found: error
+
+  deployment-contract:
+    name: Deployment contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment scripts
+        run: |
+          bash -n mini-admin-server-install.sh
+          bash -n scripts/deploy-mini-admin.sh
+          bash -n scripts/backup-mini-admin.sh
+          bash -n scripts/restore-mini-admin.sh
+          bash -n scripts/acceptance-mini-admin.sh
+          bash mini-admin-server-install.sh --help >/dev/null
+          bash scripts/deploy-mini-admin.sh --help >/dev/null
+          bash scripts/backup-mini-admin.sh --help >/dev/null
+          bash scripts/restore-mini-admin.sh --help >/dev/null
+          bash scripts/acceptance-mini-admin.sh --help >/dev/null
+
+      - name: Validate Compose configuration
+        run: |
+          docker compose --env-file .env.example config --quiet
+          docker compose --env-file .env.example config --services | sort > actual-services.txt
+          printf '%s\n' api gateway mysql redis web | sort > expected-services.txt
+          diff --unified expected-services.txt actual-services.txt
+
   docs:
     name: Docs build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,6 +143,7 @@ jobs:
   frontend:
     name: Frontend typecheck and build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       VITE_GLOB_API_URL: /api
     steps:
@@ -97,3 +173,27 @@ jobs:
       - name: Build web app
         working-directory: frontend/vue-vben-admin
         run: pnpm -F @vben/web-antd run build
+
+  docker-images:
+    name: Docker image build
+    if: github.event_name != 'pull_request'
+    needs:
+      - backend
+      - deployment-contract
+      - frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      MINIADMIN_NPM_REGISTRY: https://registry.npmjs.org
+      MINIADMIN_PNPM_FETCH_TIMEOUT: 900000
+      MINIADMIN_PNPM_FETCH_RETRIES: 8
+      MINIADMIN_PNPM_NETWORK_CONCURRENCY: 4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build deployment images
+        run: docker compose --env-file .env.example build api gateway web

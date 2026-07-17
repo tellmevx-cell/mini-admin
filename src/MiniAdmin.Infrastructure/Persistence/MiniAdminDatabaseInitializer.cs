@@ -45,6 +45,10 @@ public sealed class MiniAdminDatabaseInitializer(
     private const string NotificationRetrySeedName = "通知投递手工重发权限";
     private const string NotificationDeliveryRetryJobSeedVersion = "202606090003-notification-delivery-retry-job";
     private const string NotificationDeliveryRetryJobSeedName = "通知投递自动重试定时任务";
+    private const string TenantResourceQuotaWarningSeedVersion = "202607160001-tenant-resource-quota-warning";
+    private const string TenantResourceQuotaWarningSeedName = "租户资源配额预警模板和定时任务";
+    private const string TenantLifecycleSeedVersion = "202607170001-tenant-lifecycle";
+    private const string TenantLifecycleSeedName = "租户生命周期通知模板和定时任务";
     private const string AlertRulesSeedVersion = "202605280011-alert-rules";
     private const string AlertRulesSeedName = "告警规则配置菜单权限和默认规则";
     private const string NotificationRoutingSeedVersion = "202605280012-notification-routing";
@@ -138,6 +142,16 @@ public sealed class MiniAdminDatabaseInitializer(
             NotificationDeliveryRetryJobSeedVersion,
             NotificationDeliveryRetryJobSeedName,
             SeedNotificationDeliveryRetryJobAsync,
+            cancellationToken);
+        await ApplySeedVersionAsync(
+            TenantResourceQuotaWarningSeedVersion,
+            TenantResourceQuotaWarningSeedName,
+            SeedTenantResourceQuotaWarningAsync,
+            cancellationToken);
+        await ApplySeedVersionAsync(
+            TenantLifecycleSeedVersion,
+            TenantLifecycleSeedName,
+            SeedTenantLifecycleAsync,
             cancellationToken);
         await ApplySeedVersionAsync(
             AlertRulesSeedVersion,
@@ -236,6 +250,10 @@ public sealed class MiniAdminDatabaseInitializer(
             await EnsureAbacPolicyTableAsync(cancellationToken);
             await EnsureTenantInitializationColumnsAsync(cancellationToken);
             await EnsureUserTenantColumnAsync(cancellationToken);
+            await EnsureFileTenantColumnAsync(cancellationToken);
+            await EnsureTenantResourceQuotaWarningTableAsync(cancellationToken);
+            await EnsureTenantLifecycleRecordTableAsync(cancellationToken);
+            await EnsureProductionReliabilitySchemaAsync(cancellationToken);
             await EnsureTenantScopedCoreColumnsAsync(cancellationToken);
             await EnsureTenantScopedCoreIndexesAsync(cancellationToken);
             await EnsureRoleCustomDepartmentIdsColumnAsync(cancellationToken);
@@ -273,6 +291,10 @@ public sealed class MiniAdminDatabaseInitializer(
         await EnsureLoginLogTableAsync(cancellationToken);
         await EnsureOnlineUserTableAsync(cancellationToken);
         await EnsureFileTableAsync(cancellationToken);
+        await EnsureFileTenantColumnAsync(cancellationToken);
+        await EnsureTenantResourceQuotaWarningTableAsync(cancellationToken);
+        await EnsureTenantLifecycleRecordTableAsync(cancellationToken);
+        await EnsureProductionReliabilitySchemaAsync(cancellationToken);
         await EnsureAlertTableAsync(cancellationToken);
         await EnsureAlertRuleTableAsync(cancellationToken);
         await EnsureAlertRuleRecipientTableAsync(cancellationToken);
@@ -3432,15 +3454,297 @@ public sealed class MiniAdminDatabaseInitializer(
             """
             CREATE TABLE IF NOT EXISTS `mini_files` (
               `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NULL,
               `OriginalName` varchar(255) CHARACTER SET utf8mb4 NOT NULL,
               `StoredName` varchar(255) CHARACTER SET utf8mb4 NOT NULL,
               `ContentType` varchar(128) CHARACTER SET utf8mb4 NOT NULL,
               `Size` bigint NOT NULL,
               `StorageProvider` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
               `StoragePath` varchar(512) CHARACTER SET utf8mb4 NOT NULL,
+              `Status` varchar(32) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Normal',
               `CreatedAt` datetime(6) NOT NULL,
               PRIMARY KEY (`Id`),
-              KEY `IX_mini_files_CreatedAt` (`CreatedAt`)
+              KEY `IX_mini_files_CreatedAt` (`CreatedAt`),
+              KEY `IX_mini_files_TenantId` (`TenantId`)
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+    }
+
+    private async Task SeedTenantResourceQuotaWarningAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await EnsureNotificationTemplateAsync(new NotificationTemplate
+        {
+            Id = Guid.Parse("40000000-0000-0000-0000-000000000012"),
+            Code = "TenantQuota.Warning",
+            Name = "租户资源-配额预警",
+            Category = "TenantQuota",
+            Level = "Warning",
+            Channel = "InApp",
+            TitleTemplate = "{resourceName}配额{statusText}",
+            MessageTemplate = "当前已使用 {used} / {limit}（{usagePercent}%），请及时释放资源或联系平台管理员调整套餐。",
+            LinkTemplate = "{managementPath}",
+            IsEnabled = true,
+            Remark = "租户用户数或存储空间达到风险阈值时发送给租户管理员。",
+            CreatedAt = now,
+            UpdatedAt = now
+        }, cancellationToken);
+        await EnsureScheduledJobAsync(new ScheduledJob
+        {
+            Id = MiniAdminSeedIds.TenantResourceQuotaWarningJobId,
+            JobKey = "tenant-resource-quota-warning",
+            Name = "租户资源配额预警扫描",
+            Description = "扫描启用租户的用户数和存储空间，在状态跃迁时发送站内预警",
+            IntervalSeconds = 24 * 60 * 60,
+            IsEnabled = true,
+            LastStatus = "Never",
+            NextRunAt = now.AddMinutes(10)
+        }, cancellationToken);
+    }
+
+    private async Task SeedTenantLifecycleAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        await EnsureNotificationTemplateAsync(new NotificationTemplate
+        {
+            Id = Guid.Parse("40000000-0000-0000-0000-000000000013"),
+            Code = "TenantLifecycle.ExpiryReminder",
+            Name = "租户生命周期-到期提醒",
+            Category = "TenantLifecycle",
+            Level = "Warning",
+            Channel = "InApp",
+            TitleTemplate = "租户将在 {reminderDays} 天内到期",
+            MessageTemplate = "{tenantName}（{tenantCode}）将在 {expireAt} 到期，请及时联系平台管理员续期。",
+            LinkTemplate = "/dashboard/workspace",
+            IsEnabled = true,
+            Remark = "租户到期前 30、7、1 天发送给租户管理员。",
+            CreatedAt = now,
+            UpdatedAt = now
+        }, cancellationToken);
+        await EnsureNotificationTemplateAsync(new NotificationTemplate
+        {
+            Id = Guid.Parse("40000000-0000-0000-0000-000000000014"),
+            Code = "TenantLifecycle.Expired",
+            Name = "租户生命周期-已到期",
+            Category = "TenantLifecycle",
+            Level = "Warning",
+            Channel = "InApp",
+            TitleTemplate = "租户已到期：{tenantName}",
+            MessageTemplate = "{tenantName}（{tenantCode}）已于 {expireAt} 到期，系统已停止租户访问。",
+            LinkTemplate = "/platform/tenant?code={tenantCode}&status=Expired",
+            IsEnabled = true,
+            Remark = "租户自动过期后发送给平台管理员。",
+            CreatedAt = now,
+            UpdatedAt = now
+        }, cancellationToken);
+        await EnsureScheduledJobAsync(new ScheduledJob
+        {
+            Id = MiniAdminSeedIds.TenantLifecycleScanJobId,
+            JobKey = "tenant-lifecycle-scan",
+            Name = "租户生命周期扫描",
+            Description = "执行租户到期前 30/7/1 天提醒、自动过期和会话失效",
+            IntervalSeconds = 24 * 60 * 60,
+            IsEnabled = true,
+            LastStatus = "Never",
+            NextRunAt = now.AddMinutes(15)
+        }, cancellationToken);
+    }
+
+    private async Task EnsureFileTenantColumnAsync(CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        var connection = dbContext.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await EnsureTenantColumnAsync(connection, "mini_files", cancellationToken);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private async Task EnsureTenantResourceQuotaWarningTableAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_tenant_resource_quota_warnings` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `ResourceType` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
+              `Status` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
+              `UsedValue` bigint NOT NULL,
+              `LimitValue` bigint NOT NULL,
+              `NotificationSequence` int NOT NULL,
+              `LastNotifiedStatus` varchar(32) CHARACTER SET utf8mb4 NULL,
+              `LastNotifiedAt` datetime(6) NULL,
+              `LastCheckedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              UNIQUE KEY `IX_mini_tenant_resource_quota_warnings_TenantId_ResourceType` (`TenantId`, `ResourceType`),
+              KEY `IX_mini_tenant_resource_quota_warnings_LastCheckedAt` (`LastCheckedAt`)
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+    }
+
+    private async Task EnsureTenantLifecycleRecordTableAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_tenant_lifecycle_records` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `EventType` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
+              `Source` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
+              `OperatorUserId` char(36) COLLATE ascii_general_ci NULL,
+              `OperatorUserName` varchar(64) CHARACTER SET utf8mb4 NULL,
+              `FromStatus` varchar(32) CHARACTER SET utf8mb4 NULL,
+              `ToStatus` varchar(32) CHARACTER SET utf8mb4 NULL,
+              `PreviousExpireAt` datetime(6) NULL,
+              `NewExpireAt` datetime(6) NULL,
+              `PreviousPackageId` char(36) COLLATE ascii_general_ci NULL,
+              `NewPackageId` char(36) COLLATE ascii_general_ci NULL,
+              `ReminderDays` int NULL,
+              `Description` varchar(512) CHARACTER SET utf8mb4 NOT NULL,
+              `DeduplicationKey` varchar(128) CHARACTER SET utf8mb4 NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              UNIQUE KEY `IX_mini_tenant_lifecycle_records_DeduplicationKey` (`DeduplicationKey`),
+              KEY `IX_mini_tenant_lifecycle_records_TenantId_CreatedAt` (`TenantId`, `CreatedAt`)
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+    }
+
+    private async Task EnsureProductionReliabilitySchemaAsync(CancellationToken cancellationToken)
+    {
+        if (!IsMySqlProvider())
+        {
+            return;
+        }
+
+        var connection = dbContext.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await EnsureColumnAsync(
+                connection,
+                "mini_scheduled_jobs",
+                "LeaseToken",
+                "ALTER TABLE `mini_scheduled_jobs` ADD COLUMN `LeaseToken` char(36) COLLATE ascii_general_ci NULL",
+                cancellationToken);
+            await EnsureColumnAsync(
+                connection,
+                "mini_scheduled_jobs",
+                "LeaseOwner",
+                "ALTER TABLE `mini_scheduled_jobs` ADD COLUMN `LeaseOwner` varchar(128) CHARACTER SET utf8mb4 NULL",
+                cancellationToken);
+            await EnsureColumnAsync(
+                connection,
+                "mini_scheduled_jobs",
+                "LeaseExpiresAt",
+                "ALTER TABLE `mini_scheduled_jobs` ADD COLUMN `LeaseExpiresAt` datetime(6) NULL",
+                cancellationToken);
+            await EnsureColumnAsync(
+                connection,
+                "mini_scheduled_jobs",
+                "LastHeartbeatAt",
+                "ALTER TABLE `mini_scheduled_jobs` ADD COLUMN `LastHeartbeatAt` datetime(6) NULL",
+                cancellationToken);
+
+            if (!await ExistsAsync(
+                connection,
+                """
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'mini_scheduled_jobs'
+                  AND INDEX_NAME = 'IX_mini_scheduled_jobs_LeaseExpiresAt'
+                """,
+                cancellationToken))
+            {
+                await ExecuteNonQueryAsync(
+                    connection,
+                    "CREATE INDEX `IX_mini_scheduled_jobs_LeaseExpiresAt` ON `mini_scheduled_jobs` (`LeaseExpiresAt`)",
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_outbox_messages` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `EventType` varchar(512) CHARACTER SET utf8mb4 NOT NULL,
+              `Payload` longtext CHARACTER SET utf8mb4 NOT NULL,
+              `Status` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
+              `AttemptCount` int NOT NULL,
+              `MaxAttempts` int NOT NULL,
+              `OccurredAt` datetime(6) NOT NULL,
+              `NextAttemptAt` datetime(6) NOT NULL,
+              `TenantId` char(36) COLLATE ascii_general_ci NULL,
+              `CorrelationId` varchar(128) CHARACTER SET utf8mb4 NULL,
+              `LeaseToken` char(36) COLLATE ascii_general_ci NULL,
+              `LeaseOwner` varchar(128) CHARACTER SET utf8mb4 NULL,
+              `LeaseExpiresAt` datetime(6) NULL,
+              `ProcessedAt` datetime(6) NULL,
+              `LastError` varchar(4000) CHARACTER SET utf8mb4 NULL,
+              `CreatedAt` datetime(6) NOT NULL,
+              `UpdatedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              KEY `IX_mini_outbox_messages_Status_NextAttemptAt` (`Status`, `NextAttemptAt`),
+              KEY `IX_mini_outbox_messages_LeaseExpiresAt` (`LeaseExpiresAt`),
+              KEY `IX_mini_outbox_messages_CreatedAt` (`CreatedAt`)
+            ) CHARACTER SET=utf8mb4;
+            """,
+            cancellationToken);
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS `mini_inbox_messages` (
+              `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+              `MessageId` char(36) COLLATE ascii_general_ci NOT NULL,
+              `ConsumerName` varchar(512) CHARACTER SET utf8mb4 NOT NULL,
+              `ProcessedAt` datetime(6) NOT NULL,
+              PRIMARY KEY (`Id`),
+              UNIQUE KEY `IX_mini_inbox_messages_MessageId_ConsumerName` (`MessageId`, `ConsumerName`),
+              KEY `IX_mini_inbox_messages_ProcessedAt` (`ProcessedAt`)
             ) CHARACTER SET=utf8mb4;
             """,
             cancellationToken);

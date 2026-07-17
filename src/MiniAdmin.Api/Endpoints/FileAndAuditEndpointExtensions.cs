@@ -30,6 +30,7 @@ using MiniAdmin.Application.Contracts.ScheduledJobs;
 using MiniAdmin.Application.Contracts.Security;
 using MiniAdmin.Application.Contracts.SystemMonitor;
 using MiniAdmin.Application.Contracts.TenantPackages;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
 using MiniAdmin.Application.Contracts.Tenants;
 using MiniAdmin.Application.Contracts.UserNotifications;
 using MiniAdmin.Application.Contracts.Users;
@@ -103,12 +104,20 @@ public static class FileAndAuditEndpointExtensions
             }
 
             await using var stream = file.OpenReadStream();
-            var uploaded = await fileAppService.UploadAsync(
-                stream,
-                file.FileName,
-                file.ContentType,
-                file.Length,
-                cancellationToken);
+            FileDto uploaded;
+            try
+            {
+                uploaded = await fileAppService.UploadAsync(
+                    stream,
+                    file.FileName,
+                    file.ContentType,
+                    file.Length,
+                    cancellationToken);
+            }
+            catch (TenantResourceQuotaExceededException exception)
+            {
+                return Results.Conflict(ApiResponse<FileDto?>.Fail(exception.Message));
+            }
 
             return Results.Ok(ApiResponse<FileDto>.Ok(uploaded));
         })

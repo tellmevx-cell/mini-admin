@@ -1,11 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.Files;
+using MiniAdmin.Application.Contracts.MultiTenancy;
 using MiniAdmin.Domain.Entities;
 
 namespace MiniAdmin.Infrastructure.Persistence;
 
-public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileRepository
+public sealed class EfFileRepository(
+    MiniAdminDbContext dbContext,
+    ICurrentTenant currentTenant) : IFileRepository
 {
     public async Task<PageResult<FileDto>> GetListAsync(
         FileListQuery query,
@@ -13,7 +16,7 @@ public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileReposi
     {
         var page = Math.Max(query.Page, 1);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
-        var filesQuery = dbContext.ManagedFiles.AsNoTracking();
+        var filesQuery = ApplyTenantScope(dbContext.ManagedFiles.AsNoTracking());
 
         if (!string.IsNullOrWhiteSpace(query.OriginalName))
         {
@@ -40,8 +43,7 @@ public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileReposi
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.ManagedFiles
-            .AsNoTracking()
+        return await ApplyTenantScope(dbContext.ManagedFiles.AsNoTracking())
             .Where(x => x.Id == id)
             .Select(x => ToDto(x))
             .SingleOrDefaultAsync(cancellationToken);
@@ -54,6 +56,7 @@ public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileReposi
         var file = new ManagedFile
         {
             Id = Guid.NewGuid(),
+            TenantId = currentTenant.TenantId,
             OriginalName = request.OriginalName,
             StoredName = request.StoredName,
             ContentType = request.ContentType,
@@ -74,7 +77,7 @@ public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileReposi
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var file = await dbContext.ManagedFiles
+        var file = await ApplyTenantScope(dbContext.ManagedFiles)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (file is null)
         {
@@ -91,7 +94,7 @@ public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileReposi
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var file = await dbContext.ManagedFiles
+        var file = await ApplyTenantScope(dbContext.ManagedFiles)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (file is null)
         {
@@ -116,5 +119,12 @@ public sealed class EfFileRepository(MiniAdminDbContext dbContext) : IFileReposi
             file.StoragePath,
             file.Status,
             file.CreatedAt);
+    }
+
+    private IQueryable<ManagedFile> ApplyTenantScope(IQueryable<ManagedFile> filesQuery)
+    {
+        return currentTenant.IsTenant
+            ? filesQuery.Where(x => x.TenantId == currentTenant.TenantId)
+            : filesQuery;
     }
 }

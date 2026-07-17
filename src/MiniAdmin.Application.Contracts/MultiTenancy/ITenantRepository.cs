@@ -21,15 +21,24 @@ public interface ITenantRepository
 
     Task<TenantDto> CreateAsync(
         CreateTenantRequest request,
+        TenantOperationActor actor,
         CancellationToken cancellationToken = default);
 
     Task<TenantDto?> UpdateAsync(
         Guid id,
         UpdateTenantRequest request,
+        TenantOperationActor actor,
         CancellationToken cancellationToken = default);
 
     Task<TenantDto?> SetStatusAsync(
         Guid id,
         string status,
+        TenantOperationActor actor,
+        CancellationToken cancellationToken = default);
+
+    Task<TenantDto?> RenewAsync(
+        Guid id,
+        RenewTenantRequest request,
+        TenantOperationActor actor,
         CancellationToken cancellationToken = default);
 }

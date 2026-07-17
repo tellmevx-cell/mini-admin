@@ -31,6 +31,8 @@ using MiniAdmin.Application.Contracts.Roles;
 using MiniAdmin.Application.Contracts.ScheduledJobs;
 using MiniAdmin.Application.Contracts.Security;
 using MiniAdmin.Application.Contracts.TenantPackages;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
+using MiniAdmin.Application.Contracts.Tenants;
 using MiniAdmin.Application.Contracts.UnitOfWork;
 using MiniAdmin.Application.Contracts.UserNotifications;
 using MiniAdmin.Application.Contracts.Users;
@@ -164,6 +166,7 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         else
         {
             services.AddDistributedMemoryCache();
+            services.AddSingleton<IPrimaryCacheHealthProbe, DistributedCacheHealthProbe>();
         }
 
         var fileStorageOptions = ReadFileStorageOptions(configuration);
@@ -178,6 +181,10 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         });
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<ILocalEventBus, LocalEventBus>();
+        services.AddSingleton<IOutboxEventSerializer, OutboxEventSerializer>();
+        services.AddSingleton<IOutboxExecutionContext, OutboxExecutionContext>();
+        services.AddScoped<IOutboxEventDispatcher, OutboxEventDispatcher>();
+        services.AddScoped<IOutboxMessageRepository, EfOutboxMessageRepository>();
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
         RegisterLocalEventHandlers(services, typeof(MiniAdminDbContext).Assembly);
         services.AddScoped<CurrentTenant>();
@@ -216,8 +223,12 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         services.AddScoped<IFileStorageService, CompositeFileStorageService>();
         services.AddScoped<IAuthRepository, EfAuthRepository>();
         services.AddScoped<TenantInitializationTemplateService>();
+        services.AddScoped<TenantSessionInvalidator>();
         services.AddScoped<ITenantRepository, EfTenantRepository>();
         services.AddScoped<ITenantPackageRepository, EfTenantPackageRepository>();
+        services.AddScoped<ITenantResourceQuotaService, TenantResourceQuotaService>();
+        services.AddScoped<ITenantResourceQuotaWarningService, TenantResourceQuotaWarningService>();
+        services.AddScoped<ITenantLifecycleService, TenantLifecycleService>();
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IWorkbookService, XlsxWorkbookService>();
         services.AddScoped<IUserImportExportService, XlsxUserImportExportService>();
@@ -237,10 +248,13 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         services.AddScoped<IWorkflowRepository, EfWorkflowRepository>();
         RegisterWorkflowBusinessStateHandlers(services, typeof(MiniAdminDbContext).Assembly);
         services.AddScoped<IScheduledJobExecutor, ScheduledJobExecutor>();
+        services.AddSingleton<IScheduledJobExecutionContext, ScheduledJobExecutionContext>();
         services.AddScoped<IMiniAdminDatabaseInitializer, MiniAdminDatabaseInitializer>();
+        services.AddScoped<IDatabaseInitializationLock, DatabaseInitializationLock>();
         services.AddScoped<IOpenPlatformDatabaseInitializer, OpenPlatformDatabaseInitializer>();
         services.AddScoped<IPageRegistryMenuSynchronizer, PageRegistryMenuSynchronizer>();
         services.AddHostedService<ScheduledJobWorker>();
+        services.AddHostedService<OutboxWorker>();
 
         return services;
     }
@@ -305,11 +319,12 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
         if (redisDescriptor is null)
         {
             services.AddDistributedMemoryCache();
+            services.AddSingleton<IPrimaryCacheHealthProbe, DistributedCacheHealthProbe>();
             return;
         }
 
         services.Remove(redisDescriptor);
-        services.AddSingleton<IDistributedCache>(serviceProvider =>
+        services.AddSingleton<ResilientDistributedCache>(serviceProvider =>
         {
             var primary = (IDistributedCache)CreateService(redisDescriptor, serviceProvider);
             var fallback = ActivatorUtilities.CreateInstance<MemoryDistributedCache>(serviceProvider);
@@ -317,6 +332,10 @@ public static class MiniAdminPersistenceServiceCollectionExtensions
 
             return new ResilientDistributedCache(primary, fallback, logger);
         });
+        services.AddSingleton<IDistributedCache>(serviceProvider =>
+            serviceProvider.GetRequiredService<ResilientDistributedCache>());
+        services.AddSingleton<IPrimaryCacheHealthProbe>(serviceProvider =>
+            serviceProvider.GetRequiredService<ResilientDistributedCache>());
     }
 
     private static string BuildRedisConfiguration(string configuration)

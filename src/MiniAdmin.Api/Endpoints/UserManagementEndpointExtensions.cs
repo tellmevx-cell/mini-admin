@@ -29,6 +29,7 @@ using MiniAdmin.Application.Contracts.ScheduledJobs;
 using MiniAdmin.Application.Contracts.Security;
 using MiniAdmin.Application.Contracts.SystemMonitor;
 using MiniAdmin.Application.Contracts.TenantPackages;
+using MiniAdmin.Application.Contracts.TenantResourceQuotas;
 using MiniAdmin.Application.Contracts.Tenants;
 using MiniAdmin.Application.Contracts.UserNotifications;
 using MiniAdmin.Application.Contracts.Users;
@@ -139,10 +140,18 @@ public static class UserManagementEndpointExtensions
             }
 
             await using var stream = file.OpenReadStream();
-            var result = await userAppService.PreviewImportAsync(
-                stream,
-                GetRequiredUserName(principal),
-                cancellationToken);
+            UserImportResultDto result;
+            try
+            {
+                result = await userAppService.PreviewImportAsync(
+                    stream,
+                    GetRequiredUserName(principal),
+                    cancellationToken);
+            }
+            catch (TenantResourceQuotaExceededException exception)
+            {
+                return Results.Conflict(ApiResponse<UserImportResultDto?>.Fail(exception.Message));
+            }
 
             return Results.Ok(ApiResponse<UserImportResultDto>.Ok(result));
         })
@@ -183,10 +192,18 @@ public static class UserManagementEndpointExtensions
             }
 
             await using var stream = file.OpenReadStream();
-            var result = await userAppService.ImportAsync(
-                stream,
-                GetRequiredUserName(principal),
-                cancellationToken);
+            UserImportResultDto result;
+            try
+            {
+                result = await userAppService.ImportAsync(
+                    stream,
+                    GetRequiredUserName(principal),
+                    cancellationToken);
+            }
+            catch (TenantResourceQuotaExceededException exception)
+            {
+                return Results.Conflict(ApiResponse<UserImportResultDto?>.Fail(exception.Message));
+            }
 
             return Results.Ok(ApiResponse<UserImportResultDto>.Ok(result));
         })
@@ -206,6 +223,10 @@ public static class UserManagementEndpointExtensions
             catch (UserOperationException exception)
             {
                 return Results.BadRequest(ApiResponse<UserListItemDto?>.Fail(exception.Message));
+            }
+            catch (TenantResourceQuotaExceededException exception)
+            {
+                return Results.Conflict(ApiResponse<UserListItemDto?>.Fail(exception.Message));
             }
 
             return Results.Ok(ApiResponse<UserListItemDto>.Ok(user));

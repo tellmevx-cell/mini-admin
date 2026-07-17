@@ -90,8 +90,9 @@ public sealed class VbenLoginLoopTests : IClassFixture<WebApplicationFactory<Pro
         });
         using var client = factory.CreateClient();
 
-        var first = await client.GetAsync("/health");
-        var second = await client.GetAsync("/health");
+        // Health probes must never be rate limited; use a regular public endpoint here.
+        var first = await client.GetAsync("/auth/captcha");
+        var second = await client.GetAsync("/auth/captcha");
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);

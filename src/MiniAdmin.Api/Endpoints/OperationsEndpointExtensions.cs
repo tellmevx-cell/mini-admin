@@ -15,6 +15,7 @@ using MiniAdmin.Application.Contracts.CodeGenerators;
 using MiniAdmin.Application.Contracts.Common;
 using MiniAdmin.Application.Contracts.Departments;
 using MiniAdmin.Application.Contracts.Dictionaries;
+using MiniAdmin.Application.Contracts.Events;
 using MiniAdmin.Application.Contracts.Files;
 using MiniAdmin.Application.Contracts.Menus;
 using MiniAdmin.Application.Contracts.MultiTenancy;
@@ -230,6 +231,37 @@ public static class OperationsEndpointExtensions
             return Results.Ok(ApiResponse<object>.Ok(details));
         })
         .RequirePermission("system:scheduled-job:query");
+
+        app.MapGet("/system/outbox-message/list", async (
+            int? page,
+            int? pageSize,
+            string? status,
+            string? eventType,
+            IOutboxAppService outboxAppService,
+            CancellationToken cancellationToken) =>
+        {
+            var query = new OutboxMessageListQuery(
+                Page: page ?? 1,
+                PageSize: pageSize ?? 20,
+                Status: status,
+                EventType: eventType);
+            var messages = await outboxAppService.GetListAsync(query, cancellationToken);
+            return Results.Ok(ApiResponse<object>.Ok(messages));
+        })
+        .RequirePermission("system:scheduled-job:query");
+
+        app.MapPost("/system/outbox-message/{id:guid}/retry", async (
+            Guid id,
+            IOutboxAppService outboxAppService,
+            CancellationToken cancellationToken) =>
+        {
+            var retried = await outboxAppService.RetryAsync(id, cancellationToken);
+            return retried
+                ? Results.Ok(ApiResponse<bool>.Ok(true))
+                : Results.BadRequest(ApiResponse<bool>.Fail(
+                    "Only retry or dead-letter outbox messages can be resubmitted."));
+        })
+        .RequirePermission("system:scheduled-job:run");
 
         app.MapGet("/system/monitor/overview", async (
             ISystemMonitorAppService systemMonitorAppService,
