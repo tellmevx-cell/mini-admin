@@ -46,12 +46,17 @@ public sealed class TenantResourceQuotaWarningTests :
         await AddTenantUsersAsync(tenant.Id, tenant.Unique, 3);
 
         var firstScan = await ScanAsync();
-        Assert.Equal(1, firstScan.WarningResourceCount);
-        Assert.Equal(0, firstScan.ExhaustedResourceCount);
-        Assert.Equal(1, firstScan.NotificationCount);
+        var firstWarning = Assert.Single(firstScan.Details, item =>
+            item.TenantId == tenant.Id.ToString() &&
+            item.ResourceType == TenantResourceTypes.Users);
+        Assert.Equal(TenantQuotaStatuses.Warning, firstWarning.Status);
+        Assert.Equal(1, firstWarning.NotificationCount);
 
         var duplicateScan = await ScanAsync();
-        Assert.Equal(0, duplicateScan.NotificationCount);
+        var duplicateWarning = Assert.Single(duplicateScan.Details, item =>
+            item.TenantId == tenant.Id.ToString() &&
+            item.ResourceType == TenantResourceTypes.Users);
+        Assert.Equal(0, duplicateWarning.NotificationCount);
 
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -75,13 +80,17 @@ public sealed class TenantResourceQuotaWarningTests :
 
         await RemoveTenantUsersAsync(tenant.Id, 2);
         var recoveryScan = await ScanAsync();
-        Assert.Equal(0, recoveryScan.WarningResourceCount);
-        Assert.Equal(0, recoveryScan.NotificationCount);
+        Assert.DoesNotContain(recoveryScan.Details, item =>
+            item.TenantId == tenant.Id.ToString() &&
+            item.ResourceType == TenantResourceTypes.Users);
 
         await AddTenantUsersAsync(tenant.Id, $"{tenant.Unique}-again", 2);
         var secondWarningScan = await ScanAsync();
-        Assert.Equal(1, secondWarningScan.WarningResourceCount);
-        Assert.Equal(1, secondWarningScan.NotificationCount);
+        var secondWarning = Assert.Single(secondWarningScan.Details, item =>
+            item.TenantId == tenant.Id.ToString() &&
+            item.ResourceType == TenantResourceTypes.Users);
+        Assert.Equal(TenantQuotaStatuses.Warning, secondWarning.Status);
+        Assert.Equal(1, secondWarning.NotificationCount);
 
         await AuthorizeAsync(tenant.AdminUserName, tenant.AdminPassword, tenant.Code);
         var usageResponse = await client.GetAsync("/tenant/resource-usage");

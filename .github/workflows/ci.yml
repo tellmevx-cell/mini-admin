@@ -101,11 +101,13 @@ jobs:
           bash -n scripts/backup-mini-admin.sh
           bash -n scripts/restore-mini-admin.sh
           bash -n scripts/acceptance-mini-admin.sh
+          bash -n scripts/test-server-installer.sh
           bash mini-admin-server-install.sh --help >/dev/null
           bash scripts/deploy-mini-admin.sh --help >/dev/null
           bash scripts/backup-mini-admin.sh --help >/dev/null
           bash scripts/restore-mini-admin.sh --help >/dev/null
           bash scripts/acceptance-mini-admin.sh --help >/dev/null
+          bash scripts/test-server-installer.sh
 
       - name: Validate Compose configuration
         run: |
