@@ -67,7 +67,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ReverseProxy__TrustForwardedHeaders: "${MINIADMIN_TRUST_FORWARDED_HEADERS:-true}"
       Jwt__SigningKey: ${MINIADMIN_JWT_SIGNING_KEY:?Set MINIADMIN_JWT_SIGNING_KEY in .env}
       OpenPlatform__Issuer: ${MINIADMIN_OPEN_PLATFORM_ISSUER:-http://localhost:5666/}
       OpenPlatform__AllowInsecureHttp: "${MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP:-false}"

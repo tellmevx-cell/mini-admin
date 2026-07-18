@@ -167,7 +167,10 @@ bash deploy.sh
 MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/
 MINIADMIN_OPEN_PLATFORM_ISSUER=https://admin.example.com/
 MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=false
+MINIADMIN_TRUST_FORWARDED_HEADERS=true
 ```
+
+启用转发头信任时，API 与 Gateway 必须保持回环绑定；HTTPS 场景还应让 1Panel/Nginx 代理回环 Web 端口，避免公网客户端直接伪造代理头。
 
 API 会在持久化上传卷中生成 OIDC RSA 签名证书。不要删除该卷；多 API 实例部署时必须共享同一证书。
 

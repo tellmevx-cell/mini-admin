@@ -102,6 +102,7 @@ builder.Services.Configure<HostOptions>(options =>
 {
     options.ShutdownTimeout = TimeSpan.FromSeconds(60);
 });
+builder.Services.AddMiniAdminForwardedHeaders(builder.Configuration);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is missing.");
@@ -297,6 +298,7 @@ builder.Services.AddMiniAdminDynamicApis(
 
 var app = builder.Build();
 
+app.UseMiniAdminForwardedHeaders(app.Configuration);
 ProductionConfigurationValidator.Validate(app.Configuration, app.Environment, app.Logger);
 
 var liveHealthOptions = new HealthCheckOptions

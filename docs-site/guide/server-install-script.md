@@ -68,9 +68,12 @@ bash mini-admin-server-install.sh
 MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/
 MINIADMIN_OPEN_PLATFORM_ISSUER=https://admin.example.com/
 MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=false
+MINIADMIN_TRUST_FORWARDED_HEADERS=true
 ```
 
 修改 `.env` 后在项目目录执行 `bash deploy.sh`。
+
+`MINIADMIN_TRUST_FORWARDED_HEADERS=true` 只应用于受控代理链。保持 API、Gateway 为 `127.0.0.1` 绑定，并让 1Panel 代理访问 `127.0.0.1:5666`，不要同时把这些内部端口直接暴露到公网。
 
 ## 后续更新
 

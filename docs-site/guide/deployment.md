@@ -119,6 +119,7 @@ docker compose up -d --build
 MINIADMIN_PUBLIC_ORIGIN=https://admin.example.com/
 MINIADMIN_OPEN_PLATFORM_ISSUER=https://admin.example.com/
 MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP=false
+MINIADMIN_TRUST_FORWARDED_HEADERS=true
 ```
 
 ## 接口限流配置

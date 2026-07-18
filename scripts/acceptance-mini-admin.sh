@@ -356,12 +356,23 @@ verify_login() {
 }
 
 verify_stack() {
-  local web_binding web_host web_port
+  local web_binding web_host web_port issuer issuer_authority allow_insecure_http
+  local -a oidc_request_args=()
   web_binding="$(load_env_value MINIADMIN_WEB_PORT 5666)"
   web_host="$(binding_check_host "$web_binding")"
   web_port="$(binding_port "$web_binding")"
   [[ -n "$WEB_URL" ]] || WEB_URL="http://${web_host}:${web_port}"
   WEB_URL="${WEB_URL%/}"
+  issuer="$(load_env_value MINIADMIN_OPEN_PLATFORM_ISSUER "${WEB_URL}/")"
+  allow_insecure_http="$(load_env_value MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP false)"
+  if [[ "$issuer" == https://* && "$allow_insecure_http" != "true" ]]; then
+    issuer_authority="${issuer#https://}"
+    issuer_authority="${issuer_authority%%/*}"
+    oidc_request_args=(
+      --header 'X-Forwarded-Proto: https'
+      --header "Host: ${issuer_authority}"
+    )
+  fi
 
   log "Validating Compose deployment contract..."
   compose config --quiet
@@ -374,7 +385,11 @@ verify_stack() {
   verify_http "${WEB_URL}/" "Web application"
   verify_http "${WEB_URL}/api/health/live" "API liveness through Web and Gateway" 'self'
   verify_http "${WEB_URL}/api/health/ready" "API readiness through Web and Gateway" 'primary-cache'
-  verify_http "${WEB_URL}/.well-known/openid-configuration" "OIDC discovery" 'issuer'
+  verify_http \
+    "${WEB_URL}/.well-known/openid-configuration" \
+    "OIDC discovery" \
+    'issuer' \
+    "${oidc_request_args[@]}"
   verify_gateway_trace
 
   if [[ "$CHECK_OPENAPI" == "true" ]]; then

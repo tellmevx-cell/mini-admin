@@ -219,6 +219,7 @@ write_env_file() {
 MINIADMIN_HTTP_PORT=${api_bind}
 MINIADMIN_GATEWAY_PORT=${gateway_bind}
 MINIADMIN_WEB_PORT=${web_port}
+MINIADMIN_TRUST_FORWARDED_HEADERS=${MINIADMIN_TRUST_FORWARDED_HEADERS:-true}
 
 MINIADMIN_MYSQL_IMAGE=${MINIADMIN_MYSQL_IMAGE:-mysql:8.4}
 MINIADMIN_REDIS_IMAGE=${MINIADMIN_REDIS_IMAGE:-redis:7.4-alpine}
@@ -473,11 +474,17 @@ binding_check_host() {
 wait_for_http() {
   local url="$1"
   local label="$2"
-  local max_attempts="${3:-20}"
+  shift 2
+  local max_attempts=20
   local attempt
 
+  if [[ $# -gt 0 && "$1" =~ ^[0-9]+$ ]]; then
+    max_attempts="$1"
+    shift
+  fi
+
   for ((attempt = 1; attempt <= max_attempts; attempt++)); do
-    if curl --fail --silent --show-error "$url" >/dev/null 2>&1; then
+    if curl --fail --silent --show-error "$@" "$url" >/dev/null 2>&1; then
       log "${label} 正常：${url}"
       return 0
     fi
@@ -541,7 +548,8 @@ verify_stack() {
   fi
 
   local api_bind gateway_bind web_bind api_host gateway_host web_host
-  local api_port gateway_port web_port
+  local api_port gateway_port web_port issuer issuer_authority allow_insecure_http
+  local -a oidc_request_args=()
   api_bind="$(load_env_value MINIADMIN_HTTP_PORT "$DEFAULT_API_BIND")"
   gateway_bind="$(load_env_value MINIADMIN_GATEWAY_PORT "$DEFAULT_GATEWAY_BIND")"
   web_bind="$(load_env_value MINIADMIN_WEB_PORT "$DEFAULT_WEB_PORT")"
@@ -551,6 +559,16 @@ verify_stack() {
   api_port="$(binding_port "$api_bind")"
   gateway_port="$(binding_port "$gateway_bind")"
   web_port="$(binding_port "$web_bind")"
+  issuer="$(load_env_value MINIADMIN_OPEN_PLATFORM_ISSUER "http://${web_host}:${web_port}/")"
+  allow_insecure_http="$(load_env_value MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP false)"
+  if [[ "$issuer" == https://* && "$allow_insecure_http" != "true" ]]; then
+    issuer_authority="${issuer#https://}"
+    issuer_authority="${issuer_authority%%/*}"
+    oidc_request_args=(
+      --header 'X-Forwarded-Proto: https'
+      --header "Host: ${issuer_authority}"
+    )
+  fi
 
   CURRENT_STAGE="验证 API"
   CURRENT_SERVICE="api"
@@ -565,7 +583,11 @@ verify_stack() {
   CURRENT_SERVICE="web"
   wait_for_http "http://${web_host}:${web_port}/" "前端页面"
   wait_for_http "http://${web_host}:${web_port}/api/health" "前端到网关到 API 链路"
-  wait_for_http "http://${web_host}:${web_port}/.well-known/openid-configuration" "OIDC 发现文档"
+  wait_for_http \
+    "http://${web_host}:${web_port}/.well-known/openid-configuration" \
+    "OIDC 发现文档" \
+    20 \
+    "${oidc_request_args[@]}"
 }
 
 print_summary() {
