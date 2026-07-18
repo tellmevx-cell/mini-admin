@@ -111,10 +111,10 @@ public static class Program
                 }
 
                 await next();
-                var forwarderFailed = context.GetForwarderErrorFeature()?.Error is not
-                    (ForwarderError.None or ForwarderError.RequestCanceled);
-                var success = !forwarderFailed && context.Response.StatusCode < 500;
-                circuitBreaker.Report(clusterId, lease, success);
+                var transientFailure = GatewayCircuitFailurePolicy.IsTransientFailure(
+                    context.GetForwarderErrorFeature()?.Error,
+                    context.Response.StatusCode);
+                circuitBreaker.Report(clusterId, lease, success: !transientFailure);
             });
             proxyPipeline.UseSessionAffinity();
             proxyPipeline.UseLoadBalancing();

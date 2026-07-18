@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using MiniAdmin.Gateway;
+using Yarp.ReverseProxy.Forwarder;
 
 namespace MiniAdmin.Tests;
 
@@ -77,6 +78,20 @@ public sealed class GatewayGovernanceTests
         breaker.Report("api", probe, success: true);
         Assert.Equal(GatewayCircuitState.Closed, breaker.GetState("api"));
         Assert.True(breaker.TryAcquire("api").Allowed);
+    }
+
+    [Fact]
+    public void CircuitFailurePolicy_Only_Classifies_Transient_Upstream_Failures()
+    {
+        Assert.False(GatewayCircuitFailurePolicy.IsTransientFailure(null, 500));
+        Assert.False(GatewayCircuitFailurePolicy.IsTransientFailure(null, 429));
+        Assert.True(GatewayCircuitFailurePolicy.IsTransientFailure(null, 502));
+        Assert.True(GatewayCircuitFailurePolicy.IsTransientFailure(null, 503));
+        Assert.True(GatewayCircuitFailurePolicy.IsTransientFailure(null, 504));
+        Assert.True(GatewayCircuitFailurePolicy.IsTransientFailure((ForwarderError)999, 200));
+        Assert.False(GatewayCircuitFailurePolicy.IsTransientFailure(
+            ForwarderError.RequestCanceled,
+            503));
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset current) : TimeProvider

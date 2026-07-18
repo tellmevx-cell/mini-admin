@@ -186,7 +186,7 @@ MINIADMIN_GATEWAY_CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
 MINIADMIN_GATEWAY_CIRCUIT_BREAKER_BREAK_SECONDS=30
 ```
 
-达到失败阈值后进入 Open 状态并快速返回 `503`；等待窗口结束进入 HalfOpen，探测成功后恢复 Closed。它保护入口，不替代业务重试、幂等或跨服务补偿。
+连接/转发失败或上游返回 `502/503/504` 达到阈值后，熔断器进入 Open 状态并快速返回 `503`；等待窗口结束进入 HalfOpen，探测成功后恢复 Closed。普通业务 `500` 不会打开整个 API 集群的熔断，避免单个业务缺陷扩散为全站不可用。它保护入口，不替代业务重试、幂等或跨服务补偿。
 
 ## 为什么现在不直接拆成微服务
 
