@@ -39,7 +39,10 @@ COPY . .
 RUN --mount=type=cache,id=miniadmin-pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
     && pnpm install --frozen-lockfile --offline
-RUN pnpm -F @vben/web-antd run build
+RUN printf 'VITE_GLOB_API_URL=%s\n' "${VITE_GLOB_API_URL}" > apps/web-antd/.env.production.local \
+    && pnpm -F @vben/web-antd run build \
+    && grep -Fq "\"VITE_GLOB_API_URL\":\"${VITE_GLOB_API_URL}\"" apps/web-antd/dist/_app.config.js \
+    && ! grep -Fq 'mock-napi.vben.pro' apps/web-antd/dist/_app.config.js
 
 FROM ${NGINX_IMAGE} AS runtime
 COPY apps/web-antd/nginx.conf /etc/nginx/conf.d/default.conf

@@ -288,6 +288,25 @@ verify_http() {
   pass "${label}: ${url}"
 }
 
+verify_frontend_runtime_config() {
+  local url="${WEB_URL}/_app.config.js"
+  local body_file="${TEMP_DIR}/frontend-runtime-config.js"
+  local header_file="${TEMP_DIR}/frontend-runtime-config-headers.txt"
+  curl_request \
+    "$url" \
+    "$body_file" \
+    "$header_file" \
+    --retry 10 \
+    --retry-max-time 75 \
+    --retry-connrefused
+  grep -Fq '"VITE_GLOB_API_URL":"/api"' "$body_file" \
+    || fail "Frontend runtime config must use the same-origin /api endpoint."
+  if grep -Fq 'mock-napi.vben.pro' "$body_file"; then
+    fail "Frontend runtime config still references the upstream Vben mock service."
+  fi
+  pass "Frontend runtime API config uses same-origin /api."
+}
+
 verify_gateway_trace() {
   local gateway_binding gateway_host gateway_port body_file header_file url
   gateway_binding="$(load_env_value MINIADMIN_GATEWAY_PORT 127.0.0.1:8088)"
@@ -385,6 +404,7 @@ verify_stack() {
   done
 
   verify_http "${WEB_URL}/" "Web application"
+  verify_frontend_runtime_config
   verify_http "${WEB_URL}/api/health/live" "API liveness through Web and Gateway" 'self'
   verify_http "${WEB_URL}/api/health/ready" "API readiness through Web and Gateway" 'primary-cache'
   verify_http \
