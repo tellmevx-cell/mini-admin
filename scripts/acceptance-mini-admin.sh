@@ -273,9 +273,13 @@ verify_http() {
   local required_text="${3:-}"
   local body_file="${TEMP_DIR}/body-${PASSED_CHECKS}.txt"
   local header_file="${TEMP_DIR}/headers-${PASSED_CHECKS}.txt"
-  local -a request_args=()
+  local -a request_args=(
+    --retry 10
+    --retry-max-time 75
+    --retry-connrefused
+  )
   if (( $# > 3 )); then
-    request_args=("${@:4}")
+    request_args+=("${@:4}")
   fi
   curl_request "$url" "$body_file" "$header_file" "${request_args[@]}"
   if [[ -n "$required_text" ]]; then
@@ -356,7 +360,7 @@ verify_login() {
 }
 
 verify_stack() {
-  local web_binding web_host web_port issuer issuer_authority allow_insecure_http
+  local web_binding web_host web_port issuer issuer_authority issuer_scheme
   local -a oidc_request_args=()
   web_binding="$(load_env_value MINIADMIN_WEB_PORT 5666)"
   web_host="$(binding_check_host "$web_binding")"
@@ -364,15 +368,13 @@ verify_stack() {
   [[ -n "$WEB_URL" ]] || WEB_URL="http://${web_host}:${web_port}"
   WEB_URL="${WEB_URL%/}"
   issuer="$(load_env_value MINIADMIN_OPEN_PLATFORM_ISSUER "${WEB_URL}/")"
-  allow_insecure_http="$(load_env_value MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP false)"
-  if [[ "$issuer" == https://* && "$allow_insecure_http" != "true" ]]; then
-    issuer_authority="${issuer#https://}"
-    issuer_authority="${issuer_authority%%/*}"
-    oidc_request_args=(
-      --header 'X-Forwarded-Proto: https'
-      --header "Host: ${issuer_authority}"
-    )
-  fi
+  issuer_scheme="${issuer%%://*}"
+  issuer_authority="${issuer#*://}"
+  issuer_authority="${issuer_authority%%/*}"
+  oidc_request_args=(
+    --header "X-Forwarded-Proto: ${issuer_scheme}"
+    --header "Host: ${issuer_authority}"
+  )
 
   log "Validating Compose deployment contract..."
   compose config --quiet

@@ -548,7 +548,7 @@ verify_stack() {
   fi
 
   local api_bind gateway_bind web_bind api_host gateway_host web_host
-  local api_port gateway_port web_port issuer issuer_authority allow_insecure_http
+  local api_port gateway_port web_port issuer issuer_authority issuer_scheme
   local -a oidc_request_args=()
   api_bind="$(load_env_value MINIADMIN_HTTP_PORT "$DEFAULT_API_BIND")"
   gateway_bind="$(load_env_value MINIADMIN_GATEWAY_PORT "$DEFAULT_GATEWAY_BIND")"
@@ -560,15 +560,13 @@ verify_stack() {
   gateway_port="$(binding_port "$gateway_bind")"
   web_port="$(binding_port "$web_bind")"
   issuer="$(load_env_value MINIADMIN_OPEN_PLATFORM_ISSUER "http://${web_host}:${web_port}/")"
-  allow_insecure_http="$(load_env_value MINIADMIN_OPEN_PLATFORM_ALLOW_INSECURE_HTTP false)"
-  if [[ "$issuer" == https://* && "$allow_insecure_http" != "true" ]]; then
-    issuer_authority="${issuer#https://}"
-    issuer_authority="${issuer_authority%%/*}"
-    oidc_request_args=(
-      --header 'X-Forwarded-Proto: https'
-      --header "Host: ${issuer_authority}"
-    )
-  fi
+  issuer_scheme="${issuer%%://*}"
+  issuer_authority="${issuer#*://}"
+  issuer_authority="${issuer_authority%%/*}"
+  oidc_request_args=(
+    --header "X-Forwarded-Proto: ${issuer_scheme}"
+    --header "Host: ${issuer_authority}"
+  )
 
   CURRENT_STAGE="验证 API"
   CURRENT_SERVICE="api"
